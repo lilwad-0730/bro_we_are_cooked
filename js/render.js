@@ -221,29 +221,77 @@ function drawWorld() {
 const UI_SCALE = 2;
 let UW = 0, UH = 0;
 const MINI_W = 300;                                   // 小地圖寬（實際像素）
-const miniBox = () => ({ w: (MINI_W + 24) / UI_SCALE, h: (MINI_W * H / W + 24) / UI_SCALE });
+// 小地圖外框占用的介面空間；w 是小地圖實際像素寬
+const miniBox = (w = MINI_W) => ({ w: (w + 24) / UI_SCALE, h: (w * H / W + 24) / UI_SCALE });
+
+// 每幀依視窗大小計算各區塊位置，避免窄視窗時重疊（字級固定，不隨視窗縮小）
+const ORD_W = 168, PANEL_H = 74, TB_MAX = 260, TB_MIN = 210;
+let L = {};
+function layout() {
+  const o = {};
+  // 計分列：寬螢幕置中；與左側訂單欄重疊時移到訂單欄右邊；還放不下就放最上方、訂單欄往下移
+  o.tbY = 6; o.tbW = TB_MAX; o.tbX = UW / 2 - TB_MAX / 2; o.ordY = 6;
+  if (o.tbX < ORD_W + 12) {
+    o.tbX = ORD_W + 12; o.tbW = Math.min(TB_MAX, UW - o.tbX - 6);
+    if (o.tbW < TB_MIN) { o.tbW = Math.min(TB_MAX, UW - 12); o.tbX = UW / 2 - o.tbW / 2; o.ordY = 62; }
+  }
+  // 狀態文字（H 說明等）：右上角放得下就放，否則放到計分列下方
+  o.stY = o.tbX + o.tbW < UW - 100 ? 16 : 66;
+  // 事件紀錄：計分列下方、訂單欄右側
+  o.logY = o.stY === 66 ? 80 : 62;
+  o.logW = Math.min(260, UW - (ORD_W + 12) - 6);
+  // 玩家面板：寬螢幕在小地圖右邊；放不下就整條放在最下方，小地圖往上移
+  const mb = miniBox();
+  o.narrow = UW - mb.w - 10 < 400;
+  o.pw = o.narrow ? Math.min(UW - 12, 430) : Math.min(UW - mb.w - 10, 430);
+  o.px = o.narrow ? UW / 2 - o.pw / 2 : Math.max(UW / 2 - o.pw / 2, mb.w + 4);
+  o.py = UH - PANEL_H - 6;
+  o.miniLift = o.narrow ? PANEL_H + 10 : 0;                 // 介面單位
+  o.miniW = MINI_W;
+  o.miniTop = UH - mb.h - o.miniLift;                       // 小地圖頂端（介面單位）
+  // 訂單卡片：垂直空間不夠時改用精簡卡片，再不夠就不顯示下一輪預告
+  const room = o.miniTop - o.ordY - 6;
+  o.ordCh = 24 + 3 * 64 + 34 <= room ? 60 : 42;
+  o.ordPreview = 24 + 3 * (o.ordCh + 4) + 34 <= room;
+  // 精簡卡片仍放不下：比較小地圖放左邊（訂單欄下方）或右邊（事件紀錄下方）哪邊空間大，
+  // 依該邊的高度縮小小地圖（小地圖沒有文字，可以縮），太小才不顯示
+  o.miniRight = false;
+  const ordH = 24 + 3 * (o.ordCh + 4) + (o.ordPreview ? 34 : 0);
+  if (ordH > room) {
+    const logH = o.logW >= 150 ? 8 + (UH < 350 ? 3 : UH < 400 ? 4 : 7) * 18 : 0;
+    const leftH = UH - o.miniLift - (o.ordY + ordH + 6);
+    const rightH = UH - o.miniLift - (Math.max(o.logY + logH, o.stY + 10) + 6);
+    o.miniRight = rightH > leftH;
+    const boxH = Math.max(leftH, rightH);                  // 小地圖外框可用高度（介面單位）
+    o.miniW = Math.min(MINI_W, Math.max(0, (boxH * UI_SCALE - 24) * W / H));
+    if (o.miniW < 120) o.miniW = 0;
+    o.miniTop = UH - miniBox(o.miniW).h - o.miniLift;
+  }
+  return o;
+}
 
 function panel(x, y, w, h, alpha = 0.72) { rr(ctx, x, y, w, h, 6); ctx.fillStyle = `rgba(16,18,24,${alpha})`; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1; ctx.stroke(); }
 
 function drawTopBar() {
   const remain = Math.max(0, CFG.MATCH - G.time);
   const mm = Math.floor(remain / 60), ss = Math.floor(remain % 60);
-  const w = 260, x = UW / 2 - w / 2;
-  panel(x, 6, w, 50);
-  text(ctx, G.teams[0].score + '', x + 52, 30, { size: 26, bold: true, align: 'center', color: G.teams[0].color });
-  text(ctx, G.teams[1].score + '', x + w - 52, 30, { size: 26, bold: true, align: 'center', color: G.teams[1].color });
+  const w = L.tbW, x = L.tbX, sx = Math.min(52, w * 0.2);
+  panel(x, L.tbY, w, 50);
+  text(ctx, G.teams[0].score + '', x + sx, 30, { size: 26, bold: true, align: 'center', color: G.teams[0].color });
+  text(ctx, G.teams[1].score + '', x + w - sx, 30, { size: 26, bold: true, align: 'center', color: G.teams[1].color });
   text(ctx, mm + ':' + String(ss).padStart(2, '0'), x + w / 2, 26, { size: 24, bold: true, align: 'center', color: remain <= CFG.RUSH ? '#ffb347' : '#fff' });
   text(ctx, G.rush ? '尖峰 ×1.5' : '第 ' + G.round + ' 輪', x + w / 2, 46, { size: 11, align: 'center', color: G.rush ? '#ffb347' : '#bbb' });
   text(ctx, '我方', x + 8, 13, { size: 11, color: '#aaa', base: 'top' });
   text(ctx, '敵方', x + w - 8, 13, { size: 11, align: 'right', color: '#aaa', base: 'top' });
   const st = [G.paused ? '暫停' : '', G.speed !== 1 ? '×' + G.speed : '', G.spectate ? '觀戰' : '', G.reveal ? '全圖' : ''].filter(Boolean).join(' ');
-  text(ctx, (st ? st + '　' : '') + 'H 說明', UW - 8, 16, { size: 13, align: 'right', color: st ? '#ffd27a' : '#999' });
+  text(ctx, (st ? st + '　' : '') + 'H 說明', UW - 8, L.stY, { size: 13, align: 'right', color: st ? '#ffd27a' : '#999' });
 }
 
 // 訂單：左側直排三張卡片
 function drawOrders() {
-  const x = 6, y = 6, cw = 160, ch = 60, gap = 4;
-  const preview = G.nextOrders ? 34 : 0;
+  const x = 6, y = L.ordY, cw = 160, ch = L.ordCh, gap = 4, compact = ch < 60;
+  const showPreview = G.nextOrders && L.ordPreview;
+  const preview = showPreview ? 34 : 0;
   panel(x, y, cw + 8, 24 + 3 * (ch + gap) + preview);
   text(ctx, '共用訂單（先交先得）', x + 8, y + 13, { size: 13, bold: true, color: '#ddd' });
   const mineA = activeRecipes(0), theirA = activeRecipes(1);
@@ -253,14 +301,18 @@ function drawOrders() {
     ctx.fillStyle = o.doneBy < 0 ? 'rgba(255,255,255,.08)' : (o.doneBy === 0 ? 'rgba(76,155,255,.28)' : 'rgba(255,93,93,.28)'); ctx.fill();
     text(ctx, RECIPES[o.key].name, cx + 6, cy + 12, { size: 15, bold: true });
     text(ctx, o.score + '', cx + cw - 6, cy + 12, { size: 14, bold: true, align: 'right', color: '#ffd27a' });
-    RECIPES[o.key].ings.forEach((k, j) => drawItemIcon(ctx, 'raw', k, cx + 14 + j * 24, cy + 32, 10));
-    if (o.doneBy >= 0) text(ctx, (o.doneBy === 0 ? '我方' : '敵方') + '完成', cx + cw - 6, cy + 32, { size: 13, bold: true, align: 'right', color: G.teams[o.doneBy].color });
-    else {
+    RECIPES[o.key].ings.forEach((k, j) => drawItemIcon(ctx, 'raw', k, cx + 14 + j * 24, cy + 31, 10));
+    if (o.doneBy >= 0) text(ctx, (o.doneBy === 0 ? '我方' : '敵方') + '完成', cx + cw - 6, cy + 31, { size: 13, bold: true, align: 'right', color: G.teams[o.doneBy].color });
+    else if (compact) {
+      // 精簡卡片：只在右側標出敵方是否正在做
+      if (theirA.has(o.key)) text(ctx, '敵製作中', cx + cw - 6, cy + 31, { size: 11, align: 'right', color: G.teams[1].color });
+      else if (mineA.has(o.key)) text(ctx, '我製作中', cx + cw - 6, cy + 31, { size: 11, align: 'right', color: G.teams[0].color });
+    } else {
       if (mineA.has(o.key)) text(ctx, '我方製作中', cx + 6, cy + 51, { size: 11, color: G.teams[0].color });
       if (theirA.has(o.key)) text(ctx, '敵方製作中', cx + cw - 6, cy + 51, { size: 11, align: 'right', color: G.teams[1].color });
     }
   });
-  if (G.nextOrders) {
+  if (showPreview) {
     const py = y + 24 + 3 * (ch + gap);
     text(ctx, '下一輪預告：', x + 8, py + 8, { size: 12, color: '#bbb' });
     text(ctx, G.nextOrders.map(o => RECIPES[o.key].name).join('、'), x + 8, py + 24, { size: 12, color: '#ddd' });
@@ -269,9 +321,9 @@ function drawOrders() {
 
 // 事件紀錄：右上，計分列下方
 function drawLog() {
-  const w = Math.min(260, UW / 2 - 140), x = UW - w - 6, y = 62;
-  const n = Math.min(UH < 400 ? 4 : 7, G.logs.length);
-  if (!n || w < 120) return;
+  const w = L.logW, x = UW - w - 6, y = L.logY;
+  const n = Math.min(UH < 350 ? 3 : UH < 400 ? 4 : 7, G.logs.length);
+  if (!n || w < 150) return;
   panel(x, y, w, 8 + n * 18, 0.6);
   for (let i = 0; i < n; i++) {
     const l = G.logs[i];
@@ -286,8 +338,9 @@ function drawLog() {
 
 // 小地圖：維持實際像素大小，左下角
 function drawMinimap() {
+  if (!L.miniW) return;
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
-  const w = MINI_W, h = w * H / W, x = 12, y = VH - h - 12, k = w / W;
+  const w = L.miniW, h = w * H / W, x = L.miniRight ? VW - w - 12 : 12, y = VH - h - 12 - L.miniLift * UI_SCALE, k = w / W;
   panel(x - 4, y - 4, w + 8, h + 8, 0.8);
   ctx.translate(x, y); ctx.scale(k, k);
   ctx.fillStyle = '#34402f'; ctx.fillRect(0, 0, W, H);
@@ -324,14 +377,13 @@ const uiMouse = () => ({ x: UI.mouse.x / UI_SCALE, y: UI.mouse.y / UI_SCALE });
 
 function drawPlayerPanel() {
   const c = player();
-  const left = miniBox().w + 4;                      // 避開左下角小地圖
   if (G.spectate) {
-    const w = Math.min(UW - left - 6, 420), x = Math.max(UW / 2 - w / 2, left);
+    const w = Math.min(L.pw, 420), x = L.px + (L.pw - w) / 2;
     panel(x, UH - 34, w, 28);
     text(ctx, '觀戰中：V 切回操作　Z 全圖／跟隨　＋／－ 速度', x + w / 2, UH - 20, { size: 13, align: 'center', color: '#ddd' });
     return;
   }
-  const w = Math.min(UW - left - 6, 430), h = 74, x = Math.max(UW / 2 - w / 2, left), y = UH - h - 6;
+  const w = L.pw, h = PANEL_H, x = L.px, y = L.py;
   panel(x, y, w, h);
   slot(x + 8, y + 8, 40, c.hand, '手上');
   for (let i = 0; i < CFG.BAG_SLOTS; i++) {
@@ -361,7 +413,7 @@ function drawPlayerPanel() {
   UI.bagRect = null;
   if (UI.bagOpen) {
     // 放在右下、玩家面板上方，不蓋住畫面中央的角色
-    const bw = 200, bh = 104, bx = UW - bw - 6, by = Math.max(62, y - bh - 8);
+    const bw = 200, bh = 104, bx = L.miniRight ? 6 : UW - bw - 6, by = Math.max(62, y - bh - 8);
     UI.bagRect = { x: bx, y: by, w: bw, h: bh };
     panel(bx, by, bw, bh, 0.92);
     text(ctx, '背包（Tab 關閉）', bx + 8, by + 12, { size: 13, bold: true });
@@ -385,7 +437,13 @@ function drawPlayerPanel() {
 function drawToasts(dt) {
   G.toasts.forEach(t => (t.t += dt));
   G.toasts = G.toasts.filter(t => t.t < 2.2);
-  G.toasts.forEach((t, i) => text(ctx, t.text, UW / 2, 72 + i * 24, { size: 17, bold: true, align: 'center', color: t.color, stroke: 'rgba(0,0,0,.85)' }));
+  G.toasts.forEach((t, i) => {
+    // 加半透明底板，疊在其他介面上也看得清楚
+    ctx.font = font(17, true);
+    const tw = Math.min(UW - 12, ctx.measureText(t.text).width + 24), ty = 72 + i * 28;
+    panel(UW / 2 - tw / 2, ty - 13, tw, 26, 0.82);
+    text(ctx, t.text, UW / 2, ty, { size: 17, bold: true, align: 'center', color: t.color });
+  });
 }
 
 const HELP = [
@@ -438,7 +496,7 @@ function render() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#111318'; ctx.fillRect(0, 0, VW, VH);
   drawWorld();
-  UW = VW / UI_SCALE; UH = VH / UI_SCALE;
+  UW = VW / UI_SCALE; UH = VH / UI_SCALE; L = layout();
   ctx.setTransform(UI_SCALE, 0, 0, UI_SCALE, 0, 0);
   if (G.state !== 'title') { drawOrders(); drawTopBar(); drawLog(); drawMinimap(); drawPlayerPanel(); drawToasts(dt); }
   drawOverlay();

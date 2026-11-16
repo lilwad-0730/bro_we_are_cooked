@@ -188,6 +188,7 @@ function tutorialWorld() {
 }
 
 function wrapText(s, maxW, size) {
+  ensureFont(s);
   ctx.font = font(size);
   const out = [];
   let line = '';

@@ -15,7 +15,19 @@ resize();
 
 const font = (px, bold) => (bold ? 'bold ' : '') + px + 'px ' + FONT;
 function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
+// 畫布上畫字不會自動觸發網頁字型下載；粉圓字型又依字元切成很多小檔。
+// 所以每遇到還沒請求過的字元，就主動要求瀏覽器載入對應的字型檔；載入完成後下一幀就會換成新字型。
+const requestedChars = new Set();
+function ensureFont(s) {
+  if (!document.fonts) return;
+  let miss = '';
+  for (const ch of String(s)) if (!requestedChars.has(ch)) { requestedChars.add(ch); miss += ch; }
+  if (!miss) return;
+  for (const f of ['16px "Huninn"', '16px "Fredoka"', 'bold 16px "Fredoka"']) document.fonts.load(f, miss).catch(() => {});
+}
+
 function text(c, s, x, y, o = {}) {
+  ensureFont(s);
   c.font = font(o.size || 14, o.bold); c.textAlign = o.align || 'left'; c.textBaseline = o.base || 'middle';
   if (o.stroke) { c.lineJoin = 'round'; c.lineWidth = Math.max(3, (o.size || 14) / 6); c.strokeStyle = o.stroke; c.strokeText(s, x, y); }
   // 大字加柔和陰影，看起來比較立體
@@ -27,6 +39,7 @@ function text(c, s, x, y, o = {}) {
 
 // 標題用暖色漸層字
 function titleText(s, x, y, size) {
+  ensureFont(s);
   ctx.font = font(size, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const g = ctx.createLinearGradient(0, y - size / 2, 0, y + size / 2);
   g.addColorStop(0, '#ffe08a'); g.addColorStop(1, '#ff8a3d');

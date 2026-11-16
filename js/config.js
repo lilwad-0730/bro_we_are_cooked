@@ -61,4 +61,5 @@ const TEAM_CFG = [
 ];
 
 const W = 2700, H = 1500;
-const FONT = '"Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif';
+// 英文與數字用 Fredoka（圓潤），中文用粉圓 Huninn；字型還沒載入或離線時退回系統字型
+const FONT = '"Fredoka","Huninn","Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif';

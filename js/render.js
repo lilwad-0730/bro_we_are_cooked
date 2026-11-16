@@ -17,8 +17,23 @@ const font = (px, bold) => (bold ? 'bold ' : '') + px + 'px ' + FONT;
 function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
 function text(c, s, x, y, o = {}) {
   c.font = font(o.size || 14, o.bold); c.textAlign = o.align || 'left'; c.textBaseline = o.base || 'middle';
-  if (o.stroke) { c.lineWidth = 3; c.strokeStyle = o.stroke; c.strokeText(s, x, y); }
+  if (o.stroke) { c.lineJoin = 'round'; c.lineWidth = Math.max(3, (o.size || 14) / 6); c.strokeStyle = o.stroke; c.strokeText(s, x, y); }
+  // 大字加柔和陰影，看起來比較立體
+  const shadow = (o.size || 14) >= 16 && !o.flat;
+  if (shadow) { c.shadowColor = 'rgba(0,0,0,.45)'; c.shadowBlur = 4; c.shadowOffsetY = 1.5; }
   c.fillStyle = o.color || '#fff'; c.fillText(s, x, y);
+  if (shadow) { c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetY = 0; }
+}
+
+// 標題用暖色漸層字
+function titleText(s, x, y, size) {
+  ctx.font = font(size, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const g = ctx.createLinearGradient(0, y - size / 2, 0, y + size / 2);
+  g.addColorStop(0, '#ffe08a'); g.addColorStop(1, '#ff8a3d');
+  ctx.lineJoin = 'round'; ctx.lineWidth = size / 7; ctx.strokeStyle = '#3a1e0a'; ctx.strokeText(s, x, y);
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+  ctx.fillStyle = g; ctx.fillText(s, x, y);
+  ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 }
 const toScreen = (x, y) => ({ x: (x - cam.x) * cam.zoom + VW / 2, y: (y - cam.y) * cam.zoom + VH / 2 });
 const toWorld = (x, y) => ({ x: (x - VW / 2) / cam.zoom + cam.x, y: (y - VH / 2) / cam.zoom + cam.y });
@@ -211,6 +226,7 @@ function drawWorld() {
     ctx.beginPath(); ctx.arc(p.x, p.y, 30 + 60 * (p.t % 1), 0, Math.PI * 2);
     ctx.strokeStyle = `rgba(255,90,90,${1 - (p.t % 1)})`; ctx.lineWidth = 4; ctx.stroke();
   }
+  if (G.tutorial) tutorialWorld();
   for (const f of G.fx) if (f.type === 'text' && seen(f)) text(ctx, f.text, f.x, f.y - 20 - f.t * 30, { size: 36, bold: true, align: 'center', color: f.color, stroke: '#000' });
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
@@ -279,7 +295,7 @@ function drawTopBar() {
   panel(x, L.tbY, w, 50);
   text(ctx, G.teams[0].score + '', x + sx, 30, { size: 26, bold: true, align: 'center', color: G.teams[0].color });
   text(ctx, G.teams[1].score + '', x + w - sx, 30, { size: 26, bold: true, align: 'center', color: G.teams[1].color });
-  text(ctx, mm + ':' + String(ss).padStart(2, '0'), x + w / 2, 26, { size: 24, bold: true, align: 'center', color: remain <= CFG.RUSH ? '#ffb347' : '#fff' });
+  text(ctx, G.tutorial ? '教學' : mm + ':' + String(ss).padStart(2, '0'), x + w / 2, 26, { size: 24, bold: true, align: 'center', color: remain <= CFG.RUSH ? '#ffb347' : '#fff' });
   text(ctx, G.rush ? '尖峰 ×1.5' : '第 ' + G.round + ' 輪', x + w / 2, 46, { size: 11, align: 'center', color: G.rush ? '#ffb347' : '#bbb' });
   text(ctx, '我方', x + 8, 13, { size: 11, color: '#aaa', base: 'top' });
   text(ctx, '敵方', x + w - 8, 13, { size: 11, align: 'right', color: '#aaa', base: 'top' });
@@ -321,6 +337,7 @@ function drawOrders() {
 
 // 事件紀錄：右上，計分列下方
 function drawLog() {
+  if (G.tutorial) return;
   const w = L.logW, x = UW - w - 6, y = L.logY;
   const n = Math.min(UH < 350 ? 3 : UH < 400 ? 4 : 7, G.logs.length);
   if (!n || w < 150) return;
@@ -461,7 +478,11 @@ const HELP = [
 function block(lines) {
   const total = lines.reduce((a, l) => a + l.gap, 0);
   let y = Math.max(8, UH / 2 - total / 2);
-  for (const l of lines) { text(ctx, l.t, UW / 2, y + l.gap / 2, { size: l.size, bold: l.bold, align: 'center', color: l.color || '#eee' }); y += l.gap; }
+  for (const l of lines) {
+    if (l.title) titleText(l.t, UW / 2, y + l.gap / 2, l.size);
+    else text(ctx, l.t, UW / 2, y + l.gap / 2, { size: l.size, bold: l.bold, align: 'center', color: l.color || '#eee' });
+    y += l.gap;
+  }
 }
 
 function drawOverlay() {
@@ -469,11 +490,11 @@ function drawOverlay() {
   if (G.state === 'title') {
     const m = G.measure;
     block([
-      { t: '烹飪搜打撤　2D DEMO', size: 34, bold: true, gap: 46 },
+      { t: '烹飪搜打撤', size: 40, title: true, gap: 50 },
       { t: '你操作藍隊的「你」，隊友與敵方都是 NPC。', size: 15, color: '#ccc', gap: 22 },
       { t: '六分鐘內規劃訂單，防範對方翻鍋與打暈。', size: 15, color: '#ccc', gap: 28 },
       ...HELP.map(t => ({ t, size: 15, gap: 21 })),
-      { t: 'Enter 開始操作　｜　V 觀戰', size: 18, bold: true, color: '#ffd27a', gap: 34 },
+      { t: 'Enter 開始　｜　T 教學關卡　｜　V 觀戰', size: 18, bold: true, color: '#ffd27a', gap: 34 },
       { t: '倉庫到採集點：' + Object.entries(m).map(([k, v]) => k + ' ' + v + ' 秒').join('　'), size: 12, color: '#888', gap: 16 },
     ]);
   } else if (G.state === 'end') {
@@ -483,7 +504,7 @@ function drawOverlay() {
       { t: msg, size: 40, bold: true, color: G.winner === 0 ? a.color : (G.winner === 1 ? b.color : '#fff'), gap: 48 },
       { t: '我方 ' + a.score + '　：　' + b.score + ' 敵方', size: 26, bold: true, gap: 36 },
       { t: '共 ' + G.round + ' 輪' + (a.score === b.score && a.score > 0 ? '（同分：較早完成最後一次得分者勝）' : ''), size: 15, color: '#ccc', gap: 30 },
-      { t: 'Enter 再玩一局　｜　V 觀戰一局', size: 18, bold: true, color: '#ffd27a', gap: 26 },
+      { t: 'Enter 再玩一局　｜　T 教學　｜　V 觀戰', size: 18, bold: true, color: '#ffd27a', gap: 26 },
     ]);
   } else if (UI.help) {
     block([{ t: '操作說明（H 關閉）', size: 24, bold: true, gap: 38 }, ...HELP.map(t => ({ t, size: 15, gap: 23 }))]);
@@ -498,7 +519,7 @@ function render() {
   drawWorld();
   UW = VW / UI_SCALE; UH = VH / UI_SCALE; L = layout();
   ctx.setTransform(UI_SCALE, 0, 0, UI_SCALE, 0, 0);
-  if (G.state !== 'title') { drawOrders(); drawTopBar(); drawLog(); drawMinimap(); drawPlayerPanel(); drawToasts(dt); }
+  if (G.state !== 'title') { drawOrders(); drawTopBar(); drawLog(); drawMinimap(); drawPlayerPanel(); if (G.tutorial) tutorialHUD(); drawToasts(dt); }
   drawOverlay();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }

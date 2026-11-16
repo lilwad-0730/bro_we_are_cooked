@@ -105,10 +105,12 @@ addEventListener('keydown', e => {
   if (e.repeat) return;
   keys.add(e.code);
   if (G.state !== 'play') {
+    if (e.code === 'KeyT') startTutorial();
     if (e.code === 'Enter') startGame(false);
     if (e.code === 'KeyV') startGame(true);
     return;
   }
+  if (G.tutorial && tutorialKey(e.code)) return;
   switch (e.code) {
     case 'Tab': UI.bagOpen = !UI.bagOpen; UI.drag = null; return;
     case 'KeyH': UI.help = !UI.help; return;
@@ -137,7 +139,7 @@ cv.addEventListener('mousedown', e => {
 cv.addEventListener('mouseup', () => {
   const c = player();
   if (UI.drag) {
-    if (c.bag.includes(UI.drag.item) && !inRect(uiMouse(), UI.bagRect)) { dropBag(c, UI.drag.item); toast('已丟棄到腳邊'); }
+    if (c.bag.includes(UI.drag.item) && !inRect(uiMouse(), UI.bagRect)) { dropBag(c, UI.drag.item); toast('已丟棄到腳邊'); if (G.tutorial) G.tutorial.dragged = true; }
     UI.drag = null;
   }
 });
@@ -160,6 +162,7 @@ function updateCamera(dt) {
 }
 
 function step(h) {
+  if (G.tutorial) tutorialUpdate(h);
   controlPlayer(h);
   updateAI(h);
   updateWorld(h);

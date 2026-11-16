@@ -417,7 +417,7 @@ function completeOrder(o, c) {
 // ---------------------------------------------------------------- 每幀更新
 function updateWorld(dt) {
   G.time += dt;
-  if (!G.rush && G.time >= CFG.MATCH - CFG.RUSH) { G.rush = true; log(-1, '尖峰時段：之後公開的訂單分數 ×1.5'); toast('尖峰時段開始！新訂單分數 ×1.5', '#ffd27a'); }
+  if (!G.rush && !G.tutorial && G.time >= CFG.MATCH - CFG.RUSH) { G.rush = true; log(-1, '尖峰時段：之後公開的訂單分數 ×1.5'); toast('尖峰時段開始！新訂單分數 ×1.5', '#ffd27a'); }
   for (const s of G.stations) {
     if (s.type !== 'stove' || !s.cooking || s.done || s.flipped) continue;
     s.progress += dt;
@@ -442,7 +442,7 @@ function updateWorld(dt) {
   G.fx = G.fx.filter(f => f.t < f.dur);
   for (const p of G.pings) p.t += dt;
   G.pings = G.pings.filter(p => p.t < p.dur);
-  if (G.time >= CFG.MATCH) endMatch();
+  if (G.time >= CFG.MATCH && !G.tutorial) endMatch();   // 教學不限時
 }
 
 function endMatch() {
@@ -456,6 +456,7 @@ function endMatch() {
 function newMatch() {
   buildMap();
   G.items = []; G.logs = []; G.fx = []; G.pings = []; G.toasts = [];
+  G.tutorial = null;
   G.time = 0; G.rush = false; G.tieTeam = Math.random() < 0.5 ? 0 : 1; G.lastDone = null; G.round = 0; G.orderSeq = 0; G.nextOrders = null; G.winner = undefined;
   G.chars = [makeChar(0, 0, 0, '你'), makeChar(1, 0, 1, '藍2'), makeChar(2, 1, 0, '紅1'), makeChar(3, 1, 1, '紅2')];
   G.chars[0].ai = G.spectate;

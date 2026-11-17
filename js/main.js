@@ -14,7 +14,7 @@ function getContext(c) {
   const sts = G.stations.filter(s => near(c, s)).sort((a, b) => dist(a, c) - dist(b, c));
   for (const s of sts) {
     if (s.team !== c.team) {
-      if (s.type === 'stove' && flippable(s)) return { label: 'E 關火（按住 1.5 秒）', btn: '關火', run: () => startFlip(c, s) };
+      if (s.type === 'stove' && flippable(s)) return { label: 'E 關火（1.5 秒，範圍內可移動）', btn: '關火', run: () => startFlip(c, s) };
       continue;
     }
     switch (s.type) {

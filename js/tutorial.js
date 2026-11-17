@@ -106,8 +106,21 @@ const TUT_STEPS = [
     target: () => enemyB(), done: () => enemyB().down > 0 },
   { title: '對手的東西不能拿', info: true,
     text: '對手掉了一份半成品，但你不能撿：對方的食材、半成品和成品都偷不走。打暈只能拖慢對手，他要倒地 3 秒，再回頭把東西撿回來。' },
-  { title: '關火', info: true,
-    text: '你也可以到對手廚房外，在火爐正在烹調時按 E 按住 1.5 秒關火，對方不會收到通知。廚房是半開放的，雙方火爐的狀態都看得到：火爐上方顯示「可關火」、小地圖上綠色的方塊，就是正在烹調、可以去關的火爐。雙方廚房都只有牆上的兩口火爐，所以每道菜都要防範被關火：派人守在鍋旁，或趁對手不在時去關他的火。' },
+  { title: '關火：換你去關對手的火',
+    text: '紅隊牆上的火爐正在烹調（火爐上方顯示「可關火」，小地圖上是綠色方塊）。走出廚房，到紅隊廚房的牆外靠近那口火爐，手上空著按 E 開始關火；1.5 秒內留在火爐周圍的黃色虛線圈內就會成功。對方不會收到通知。',
+    setup: () => {
+      const s = G.teams[1].stoves[0];
+      Object.assign(s, { cooking: 'st', progress: 0, done: false, flipped: false, flippedOnce: false, beingFlipped: null });
+      G.tutorial.enemyStove = s;
+      // 紅隊兩人都待在廚房最裡面，不會守鍋打斷
+      const far = P(1, 150, 600);
+      for (const e of [enemyA(), enemyB()]) { cancelAction(e); e.down = 0; e.x = far.x; e.y = far.y + (e === enemyA() ? -40 : 40); e.hand = null; }
+      tutC().flipCd = 0;
+    },
+    target: () => G.tutorial.enemyStove,
+    done: () => G.tutorial.enemyStove.flippedOnce },
+  { title: '關火的重點', info: true,
+    text: '成功！被關火的鍋會暫停烹調，要等對方回來開火。同一份料理只能被關一次火。雙方廚房都只有牆上的兩口火爐，所以每道菜都要防範被關火：派人守在鍋旁就能阻止或打斷對手，或趁對手不在時去關他的火。' },
   { title: '草叢', info: true,
     text: '野區有草叢。走進草叢後，對手就看不到你（除非他也走到你旁邊）；同樣地，對手也可能躲在草叢裡偷襲或偷偷關火。' },
   { title: '教學完成！', info: true, final: true,
@@ -160,6 +173,8 @@ function tutorialUpdate(dt) {
     const c = tutC();
     if (c.stunOK && c.charges === 0 && !c.action) { c.charges = CFG.CHARGES; c.stunCd = 0; toast('教學中自動補滿打暈次數'); }
   }
+  // 關火步驟：玩家走過去之前，紅隊的料理不會煮好
+  if (st.title === '關火：換你去關對手的火' && T.enemyStove && !T.enemyStove.flippedOnce) T.enemyStove.progress = Math.min(T.enemyStove.progress, RECIPES[T.enemyStove.cooking].cook - 3);
   if (st.info || !st.done) return;
   if (st.done()) {
     T.wait += dt;

@@ -211,14 +211,40 @@ const STATION_LOOK = {
   glove: { w: 54, h: 66, label: '手套架', fill: '#7a4f2a' },
 };
 
+function drawStation(s) {
+  const tm = G.teams[s.team];
+  const base = s.quick ? { w: 60, h: 52, label: '就地鍋', fill: '#3c3c42' } : s.wall ? { ...STATION_LOOK.stove, label: '火爐' } : STATION_LOOK[s.type];
+  const L = s.desk ? { ...base, w: 52, h: 52 } : base;   // 桌上的設施縮成桌子寬度
+  rr(ctx, s.x - L.w / 2, s.y - L.h / 2, L.w, L.h, 6); ctx.fillStyle = L.fill; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = tm.color; ctx.stroke();
+  if (s.type === 'stove') { ctx.beginPath(); ctx.arc(s.x, s.y + 2, 15, 0, Math.PI * 2); ctx.strokeStyle = '#222'; ctx.lineWidth = 4; ctx.stroke(); }
+  text(ctx, L.label, s.x, s.y - L.h / 2 - 15, { size: s.desk ? 18 : 24, bold: true, align: 'center', color: '#f3f3f3', stroke: 'rgba(0,0,0,.8)' });
+}
+
+// 桌子與桌上的設施：畫在角色下面（使用者指定）
+function drawDesks() {
+  for (const tm of G.teams) {
+    const d = tm.desk;
+    rr(ctx, d.x, d.y, d.w, d.h, 8); ctx.fillStyle = '#5a5246'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = tm.color; ctx.stroke();
+  }
+  for (const s of G.stations) if (s.desk) drawStation(s);
+}
+
+// 攻擊或備料中：畫出可以移動的範圍
+function drawWorkRange() {
+  const c = player(), a = c && c.action;
+  if (!a || !a.range || !a.target) return;
+  ctx.save(); ctx.beginPath(); ctx.arc(a.target.x, a.target.y, a.range, 0, Math.PI * 2);
+  ctx.setLineDash([10, 10]); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,214,90,.7)'; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,214,90,.06)'; ctx.fill(); ctx.restore();
+}
+
 function drawStaticLayer() {
   for (const tm of G.teams) {
     // 出餐口半圓與桌子
     const pass = tm.pass, dir = tm.id === 0 ? 1 : -1;
     ctx.beginPath(); ctx.arc(pass.x - dir * 50, pass.y, 150, -Math.PI / 2, Math.PI / 2, dir < 0);
     ctx.lineWidth = 6; ctx.strokeStyle = tm.color + 'aa'; ctx.stroke();
-    const d = tm.desk;
-    rr(ctx, d.x, d.y, d.w, d.h, 8); ctx.fillStyle = '#5a5246'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = tm.color; ctx.stroke();
   }
   for (const r of G.waters) {
     ctx.fillStyle = '#25506e'; ctx.fillRect(r.x, r.y, r.w, r.h);
@@ -237,14 +263,7 @@ function drawStaticLayer() {
     text(ctx, '門', 0, 1, { size: 26, bold: true, align: 'center', color: tm.color, stroke: 'rgba(0,0,0,.6)' });
     ctx.restore();
   }
-  for (const s of G.stations) {
-    const tm = G.teams[s.team];
-    const L = s.quick ? { w: 60, h: 52, label: '就地鍋', fill: '#3c3c42' } : s.wall ? { ...STATION_LOOK.stove, label: '火爐' } : STATION_LOOK[s.type];
-    rr(ctx, s.x - L.w / 2, s.y - L.h / 2, L.w, L.h, 6); ctx.fillStyle = L.fill; ctx.fill();
-    ctx.lineWidth = 3; ctx.strokeStyle = tm.color; ctx.stroke();
-    if (s.type === 'stove') { ctx.beginPath(); ctx.arc(s.x, s.y + 2, 15, 0, Math.PI * 2); ctx.strokeStyle = '#222'; ctx.lineWidth = 4; ctx.stroke(); }
-    text(ctx, L.label, s.x, s.y - L.h / 2 - 15, { size: 24, bold: true, align: 'center', color: '#f3f3f3', stroke: 'rgba(0,0,0,.8)' });
-  }
+  for (const s of G.stations) if (!s.desk) drawStation(s);
   for (const n of G.nodes) {
     ctx.beginPath(); ctx.arc(n.x, n.y, 24, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(20,20,20,.55)'; ctx.fill();
@@ -297,6 +316,8 @@ function drawWorld() {
     if (it.life < 5 && Math.floor(it.life * 4) % 2) continue;
     drawItemIcon(ctx, it.kind, it.key, it.x, it.y, 14);
   }
+  drawDesks();
+  drawWorkRange();
   drawFx();
   for (const c of G.chars) if (c.team === 0 || seen(c)) drawChar(c);
   drawBushes();

@@ -89,22 +89,18 @@ function tryBuild(rng) {
     }
     return null;
   };
+  // 每局完全隨機：每種食材的位置沒有固定規律（硬殼不再固定在中線、蔬菜不再固定在家門口），玩家無法背地圖【使用者指定】
   const left = [];
-  for (const [type, home] of [['veg', true], ['veg'], ['mush'], ['mush'], ['fish'], ['fish']]) {
-    const s = home ? freeSpot(half.x, half.x + 160, 150) : freeSpot(half.x + 120, half.x + half.w, 170);
+  const types = ['veg', 'veg', 'mush', 'mush', 'fish', 'fish', 'shell', 'shell'];
+  for (let i = types.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [types[i], types[j]] = [types[j], types[i]]; }
+  for (const type of types) {
+    const s = freeSpot(half.x, half.x + half.w, 160);
     if (!s) return false;
-    spots.push(s); left.push({ type, home, ...s });
+    spots.push(s); left.push({ type, ...s });
   }
+  // 「家門口的蔬菜」：離自家最近的那隻（教學與收納蔬餅會用到）
+  left.filter(n => n.type === 'veg').sort((a, b) => a.x - b.x)[0].home = true;
   const shells = [];
-  for (let k = 0; k < 3; k++) {
-    let s = null;
-    for (let tries = 0; tries < 200 && !s; tries++) {
-      const y = R(WILD.y + 60, WILD.y + WILD.h - 60);
-      if (!shells.some(o => Math.abs(o.y - y) < 160)) s = { x: W / 2, y };
-    }
-    if (!s) return false;
-    shells.push(s);
-  }
   // 草叢【使用者指定】：只在野區，不擋路也不擋視線，但角色在裡面時對手看不到
   const bushes = [];
   const boxHit = (a, b, m) => a.x < b.x + b.w + m && a.x + a.w + m > b.x && a.y < b.y + b.h + m && a.y + a.h + m > b.y;
@@ -117,7 +113,7 @@ function tryBuild(rng) {
   for (const r of rocks) G.walls.push(r, mirrorRect(r));
   if (rng() < 0.6) {   // 中線偶爾有一塊大石頭
     const h = R(80, 160), y = R(WILD.y + 40, WILD.y + WILD.h - 40 - h);
-    if (!shells.some(s => s.y > y - 70 && s.y < y + h + 70)) G.walls.push(rect(W / 2 - 50, y, 100, h));
+    G.walls.push(rect(W / 2 - 50, y, 100, h));
   }
   G.solids = G.walls.concat(G.bounds);
 
@@ -134,10 +130,10 @@ function tryBuild(rng) {
     tm.stoves = STOVE_Y.map(y => st('stove', WALL_X + 12, y, { ...cookState(), wall: true, out }));
     // 就地鍋只做收納蔬餅，放在廚房內，敵人碰不到【自行修改】
     tm.quick = st('stove', 440, 880, { ...cookState(), quick: true, raw: false, prepP: 0 });
-    // 桌子：中間是倉庫，上下是備料台
-    tm.desk = t === 0 ? rect(255, 430, 90, 340) : mirrorRect(rect(255, 430, 90, 340));
-    tm.preps = [st('prep', 300, 480, { recipe: null, progress: 0, done: false }), st('prep', 300, 720, { recipe: null, progress: 0, done: false })];
-    tm.storage = st('storage', 300, 600, { items: [] });
+    // 桌子：中間是倉庫，上下是備料台。桌子是實體，不能從底下穿過（使用者指定），兩側都能使用
+    tm.desk = t === 0 ? rect(270, 430, 60, 340) : mirrorRect(rect(270, 430, 60, 340));
+    tm.preps = [st('prep', 300, 480, { recipe: null, progress: 0, done: false, desk: true }), st('prep', 300, 720, { recipe: null, progress: 0, done: false, desk: true })];
+    tm.storage = st('storage', 300, 600, { items: [], desk: true });
     tm.pass = st('pass', 110, 600);
     tm.spawn = [P(t, 480, 560), P(t, 480, 640)];
     tm.floor = t === 0 ? rect(0, ARENA.top, WALL_X, ARENA.bot - ARENA.top) : mirrorRect(rect(0, ARENA.top, WALL_X, ARENA.bot - ARENA.top));
@@ -150,6 +146,7 @@ function tryBuild(rng) {
       G.nodes.push({ id: G.nodes.length, type: n.type, x: p.x, y: p.y, hp: CFG.MONSTER_HP, respawn: 0, res: null, side: t, lastHit: -1, home: !!n.home });
     }
   }
+  for (const tm of G.teams) G.solids.push(tm.desk);   // 擋移動與尋路，不擋視線
   for (const s of shells) G.nodes.push({ id: G.nodes.length, type: 'shell', x: s.x, y: s.y, hp: CFG.MONSTER_HP, respawn: 0, res: null, side: -1, lastHit: -1 });
   buildGrid();
   // 確認雙方都走得到每一隻怪物

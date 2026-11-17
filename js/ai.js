@@ -46,7 +46,8 @@ function runJob(c, dt) {
       j.steps[j.i] = s;
     }
     if (s.t === 'goto') {
-      const tg = s.target || s;
+      if (!s.tg) s.tg = s.target && s.target.desk ? deskAcc(c, s.target) : (s.target || s);
+      const tg = s.tg;
       if (dist(c, tg) <= (tg.tight ? 10 : (s.r || 30))) { c.path = null; j.i++; continue; }
       if (c.action && c.action.lock) return;
       followPath(c, tg.x, tg.y, dt);
@@ -102,6 +103,8 @@ function nearOwnKitchen(e, m) {
   return e.x > z.x - m && e.x < z.x + z.w + m && e.y > z.y - m && e.y < z.y + z.h + m;
 }
 // tight：火爐的站位點要走到幾乎正好的位置，否則會停在互動距離外
+// 桌上的設施（倉庫、備料台）：走到桌子靠自己這一側的旁邊
+const deskAcc = (c, s) => ({ x: s.x + (c.x < s.x ? -44 : 44), y: s.y, tight: true });   // 44＝貼著桌邊，保證在互動距離內
 const acc = (c, s) => (s.wall ? { x: s.x + s.out * (s.team === c.team ? -42 : 42), y: s.y, tight: true } : s);
 
 // ---------------------------------------------------------------- 工作種類

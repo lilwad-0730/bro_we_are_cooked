@@ -48,7 +48,7 @@ const itemName = it => (it.kind === 'raw' ? ING[it.key].name : (it.kind === 'sem
 
 // ---------------------------------------------------------------- 動作框架
 function act(c, label, dur, onDone, o = {}) {
-  c.action = { label, dur, t: 0, onDone, check: o.check, tick: o.tick, slow: !!o.slow, lock: o.lock !== false, onCancel: o.onCancel, ok: false, cancelled: false };
+  c.action = { label, dur, t: 0, onDone, check: o.check, tick: o.tick, slow: !!o.slow, lock: o.lock !== false, onCancel: o.onCancel, ok: false, cancelled: false, target: o.target, range: o.range };
   return true;
 }
 function cancelAction(c, why) {
@@ -74,11 +74,12 @@ const busy = c => c.down > 0 || c.action;
 function startGather(c, n) {
   if (busy(c)) return '動作中';
   if (c.hand) return '手上有東西，先放下';
-  if (!near(c, n)) return '離食材怪物太遠';
+  if (!near(c, n, CFG.WORK_RANGE)) return '離食材怪物太遠';
   if (n.hp <= 0) return '食材怪物重生中';
   const a = { acc: 0 };
   return act(c, '攻擊', 99, null, {
-    check: () => near(c, n, CFG.INTERACT + 8) && !c.hand && (n.hp > 0 || a.done),
+    lock: false, target: n, range: CFG.WORK_RANGE,   // 範圍內可以移動（使用者指定）
+    check: () => near(c, n, CFG.WORK_RANGE + 8) && !c.hand && (n.hp > 0 || a.done),
     tick: dt => {
       a.acc += dt;
       if (a.acc < CFG.GATHER_INT) return false;
@@ -200,7 +201,8 @@ function startPrep(c, p, rk) {
   const need = RECIPES[p.recipe].ings.length * CFG.PREP_PER_ING;
   p.user = c.id;
   return act(c, '備料', need, () => { p.done = true; p.user = null; }, {
-    check: () => near(c, p, CFG.INTERACT + 8) && !c.hand,
+    lock: false, target: p, range: CFG.WORK_RANGE,   // 與攻擊相同的範圍內移動不算中斷（使用者指定）
+    check: () => near(c, p, CFG.WORK_RANGE + 8) && !c.hand,
     tick: dt => { p.progress += dt; return p.progress >= need; },
     onCancel: () => { p.user = null; },
   });
@@ -278,7 +280,8 @@ function startQuickPrep(c, s) {
   if (c.hand) return '雙手要空著';
   const need = RECIPES.cake.ings.length * CFG.PREP_PER_ING;
   return act(c, '備料', need, () => { s.raw = false; Object.assign(s, { cooking: 'cake', progress: 0, done: false, flipped: false, flippedOnce: false }); }, {
-    check: () => s.raw && near(c, s, CFG.INTERACT + 8) && !c.hand,
+    lock: false, target: s, range: CFG.WORK_RANGE,
+    check: () => s.raw && near(c, s, CFG.WORK_RANGE + 8) && !c.hand,
     tick: dt => { s.prepP += dt; return s.prepP >= need; },
   });
 }

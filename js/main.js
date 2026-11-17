@@ -5,12 +5,12 @@ const keys = new Set();
 
 function getContext(c) {
   if (c.down > 0) return { label: '倒地中…' };
-  if (c.action) return { label: c.action.label + '中' + (c.action.lock ? '（移動會中斷）' : '') };
+  if (c.action) return { label: c.action.label + '中' + (c.action.lock ? '（移動會中斷）' : c.action.range ? '（可在範圍內移動）' : '') };
   const tm = team(c);
   const sts = G.stations.filter(s => near(c, s)).sort((a, b) => dist(a, c) - dist(b, c));
   for (const s of sts) {
     if (s.team !== c.team) {
-      if (s.type === 'stove' && flippable(s)) return { label: 'E 關火（按住 1.5 秒，對方會收到警示）', btn: '關火', run: () => startFlip(c, s) };
+      if (s.type === 'stove' && flippable(s)) return { label: 'E 關火（按住 1.5 秒）', btn: '關火', run: () => startFlip(c, s) };
       continue;
     }
     switch (s.type) {
@@ -50,7 +50,7 @@ function getContext(c) {
     if (!c.hand) return { label: 'E 拾取' + itemName(it), btn: '拾取', run: () => startPick(c, it) };
     if (it.kind !== 'dish' && bagFree(c) > 0) return { label: 'E 把' + itemName(it) + '收進背包（1 秒前搖）', btn: '收進背包', run: () => startStoreBag(c, it) };
   }
-  const n = G.nodes.filter(n => near(c, n)).sort((a, b) => dist(a, c) - dist(b, c))[0];
+  const n = G.nodes.filter(n => near(c, n, CFG.WORK_RANGE)).sort((a, b) => dist(a, c) - dist(b, c))[0];
   if (n) {
     if (n.hp <= 0) return { label: '食材怪物重生中 ' + Math.ceil(n.respawn) + ' 秒' };
     return { label: 'E 攻擊' + ING[n.type].name + '怪物（血量 ' + n.hp + '/' + CFG.MONSTER_HP + '，最後一擊拿到食材）', btn: '攻擊', run: () => startGather(c, n) };

@@ -27,7 +27,7 @@ const TUT_STEPS = [
   { title: '移動', text: '用 WASD 移動，走到廚房外發亮的蔬菜怪物旁。食材怪物分布在整張地圖上，雙方都可以搶。',
     target: homeVeg, done: () => dist(tutC(), homeVeg()) < 60,
     setup: () => { homeVeg().hp = CFG.MONSTER_HP; } },
-  { title: '攻擊食材怪物', text: '站在怪物旁、雙手空著按 E 攻擊，會一直打到牠的血條歸零。雙方攻擊力相同，打出最後一擊的人直接把食材拿在手上。雙手一次只能拿一件東西。',
+  { title: '攻擊食材怪物', text: '靠近怪物、雙手空著按 E 攻擊，會一直打到牠的血條歸零；攻擊時可以在怪物周圍的黃色虛線圈內移動，走出圈外才會中斷。雙方攻擊力相同，打出最後一擊的人直接把食材拿在手上。雙手一次只能拿一件東西。',
     target: homeVeg,
     done: () => tutC().hand && tutC().hand.key === 'veg' },
   { title: '入庫', text: '回到廚房，在倉庫旁按 E 把蔬菜放進倉庫。倉庫最多放三份原料。',
@@ -39,7 +39,7 @@ const TUT_STEPS = [
       return groundItem(i => i.key === 'mush') || myMush();
     },
     done: () => hasAll(tutTeam().storage.items, ['veg', 'mush']) },
-  { title: '備料', text: '到備料台，按數字 1 選「雙蔬煎盤」。備料要站著別動 4 秒；移動會中斷，但進度會保留。',
+  { title: '備料', text: '到備料台，按數字 1 選「雙蔬煎盤」。備料要 4 秒，期間可以在備料台周圍的黃色虛線圈內移動；走出圈外會中斷，但進度會保留。',
     target: () => tutTeam().preps.find(p => p.recipe === 'vm') || tutTeam().preps[0],
     done: () => tutTeam().preps.some(p => p.recipe === 'vm' && p.done) || activeRecipes(0).has('vm') && !tutTeam().preps.some(p => p.recipe === 'vm') },
   { title: '放鍋', text: '按 E 拿起半成品，搬到廚房牆上的火爐按 E 放鍋，之後會自動烹調。廚房只有這兩口火爐，鍋子從牆外碰得到，烹調時要留意對手來關火。',

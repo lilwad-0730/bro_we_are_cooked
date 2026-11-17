@@ -44,7 +44,7 @@ const TUT_STEPS = [
   { title: '備料', text: '到備料台，按數字 1 選「雙蔬煎盤」。備料要站著別動 4 秒；移動會中斷，但進度會保留。',
     target: () => tutTeam().preps.find(p => p.recipe === 'vm') || tutTeam().preps[0],
     done: () => tutTeam().preps.some(p => p.recipe === 'vm' && p.done) || activeRecipes(0).has('vm') && !tutTeam().preps.some(p => p.recipe === 'vm') },
-  { title: '放鍋', text: '按 E 拿起半成品，搬到上牆的外壁鍋按 E 放鍋，之後會自動烹調。廚房只有外壁鍋，鍋子從牆外碰得到，烹調時要留意對手來關火。',
+  { title: '放鍋', text: '按 E 拿起半成品，搬到廚房牆上的火爐按 E 放鍋，之後會自動烹調。廚房只有這兩口火爐，鍋子從牆外碰得到，烹調時要留意對手來關火。',
     target: () => (tutC().hand && tutC().hand.kind === 'semi' ? emptyStove() : tutTeam().preps.find(p => p.recipe === 'vm')),
     done: () => tutTeam().stoves.some(s => s.cooking === 'vm') },
   { title: '隔熱手套', text: '成品很燙，要戴手套才能拿。趁烹調的時候，到手套架按 E 戴上手套。',
@@ -58,7 +58,7 @@ const TUT_STEPS = [
 
   // ---- 背包
   { title: '收納蔬餅：解鎖背包',
-    text: '先到手套架按 E 脫下手套（戴手套不能攻擊）。打倒蔬菜怪物拿一份蔬菜，投入上牆的就地鍋，按 E 備料；煮好後按 E 吃掉，背包會解鎖兩格。',
+    text: '先到手套架按 E 脫下手套（戴手套不能攻擊）。打倒蔬菜怪物拿一份蔬菜，投入廚房裡的就地鍋，按 E 備料；煮好後按 E 吃掉，背包會解鎖兩格。',
     setup: () => { homeVeg().hp = CFG.MONSTER_HP; },
     target: () => {
       const c = tutC(), q = tutTeam().quick;
@@ -87,15 +87,15 @@ const TUT_STEPS = [
     done: () => tutC().stunOK },
 
   // ---- 防守與打暈
-  { title: '防守：外壁鍋被關火',
-    text: '敵人不能進入你的廚房，但上牆的外壁鍋從外面碰得到。紅隊在廚房外把外壁鍋的火關掉了！熄火時烹調會暫停，回到外壁鍋旁按 E 重新開火。守方站在外壁鍋旁，就能打斷對手關火。',
+  { title: '防守：火爐被關火',
+    text: '廚房的門只有自己隊伍能進出，但牆上的火爐從外面碰得到。紅隊在牆外把火爐的火關掉了！熄火時烹調會暫停，回到火爐旁按 E 重新開火。守方站在火爐旁，就能打斷對手關火。',
     setup: () => {
       const tm = tutTeam(), s = tm.stoves.find(x => x.wall);
       Object.assign(s, { cooking: 'fm', progress: 3, done: false, flipped: false, flippedOnce: false });
-      const e = enemyA(), spot = { x: s.x, y: s.y - 34 };
+      const e = enemyA(), spot = acc(e, s);
       e.x = spot.x; e.y = spot.y; e.hand = null; e.bag = []; e.flipCd = 0; e.down = 0;
       G.tutorial.flipStove = s;
-      if (startFlip(e, s) !== true) { s.flipped = true; s.flippedOnce = true; s.progress = 0; log(1, '紅1 關掉了我方外壁鍋的火'); toast('警示：我方外壁鍋被關火了！', '#ff8a8a'); }
+      if (startFlip(e, s) !== true) { s.flipped = true; s.flippedOnce = true; s.progress = 0; log(1, '紅1 關掉了我方火爐的火'); toast('警示：我方火爐被關火了！', '#ff8a8a'); }
     },
     target: () => G.tutorial.flipStove,
     done: () => { const s = G.tutorial.flipStove; return s.flippedOnce && !s.flipped && !enemyA().action; } },
@@ -103,7 +103,7 @@ const TUT_STEPS = [
     text: '紅隊的人在廚房外搬貨。走出廚房，手上要空著（Q 放下）、不能戴手套，用滑鼠對準紅隊的人按空白鍵打暈。前搖 0.8 秒，打中後對方倒地 3 秒。',
     setup: () => {
       const a = enemyA(); const home = G.teams[1].spawn[0]; a.x = home.x; a.y = home.y; cancelAction(a);
-      const e = enemyB(), p = P(0, 700, 760);
+      const e = enemyB(), p = P(0, 760, 860);
       e.x = p.x; e.y = p.y; e.down = 0; e.immune = 0; e.hand = { id: ++G.itemSeq, kind: 'semi', key: 'sv', team: 1, life: 9999 }; e.bag = [];
       G.tutorial.patrol = { x: p.x, y: p.y, t: 0 };
     },
@@ -111,14 +111,14 @@ const TUT_STEPS = [
   { title: '對手的東西不能拿', info: true,
     text: '對手掉了一份半成品，但你不能撿：對方的食材、半成品和成品都偷不走。打暈只能拖慢對手，他要倒地 3 秒，再回頭把東西撿回來。' },
   { title: '關火', info: true,
-    text: '你也可以到對手廚房外，在外壁鍋正在烹調時按 E 按住 1.5 秒關火，對方會收到警示。雙方廚房都只有外壁鍋，所以每道菜都要防範被關火：派人守在鍋旁，或趁對手不在時去關他的火。' },
+    text: '你也可以到對手廚房外，在火爐正在烹調時按 E 按住 1.5 秒關火，對方會收到警示。雙方廚房都只有牆上的兩口火爐，所以每道菜都要防範被關火：派人守在鍋旁，或趁對手不在時去關他的火。' },
   { title: '教學完成！', info: true, final: true,
     text: 'Enter 開始正式對局，T 再玩一次教學，Esc 回標題。正式對局是 6 分鐘，比的是誰交出的訂單分數多。' },
 ];
 
 function startTutorial() {
   G.spectate = false;
-  newMatch();
+  newMatch(7);   // 教學固定用同一張野區
   G.state = 'play'; G.paused = false; UI.fit = false; UI.bagOpen = false; UI.help = false;
   for (const c of G.chars) c.ai = false;
   G.chars[0].name = '你';

@@ -62,6 +62,6 @@ const TEAM_CFG = [
   { name: '敵方', color: '#ff5d5d', dark: '#8f2626', wantBag: [true, false], aggr: 0.5, fighter: 1 },
 ];
 
-const W = 2700, H = 1500;
+const W = 3000, H = 1200;
 // 英文與數字用 Fredoka（圓潤），中文用粉圓 Huninn；字型還沒載入或離線時退回系統字型
 const FONT = '"Fredoka","Huninn","Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif';

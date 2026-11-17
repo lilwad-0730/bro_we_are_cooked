@@ -103,18 +103,8 @@ function bar(c, x, y, w, frac, color, h = 5) {
 
 // ---------------------------------------------------------------- 世界
 function drawGround() {
-  ctx.fillStyle = '#34402f'; ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = '#4f4b3a'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const lanes = [
-    [[580, 750], [W - 580, 750]],
-    [[580, 590], [440, 300], [440, 100], [1320, 100]], [[W - 580, 590], [W - 440, 300], [W - 440, 100], [W - 1320, 100]],
-    [[580, 910], [440, 1200], [440, 1400], [1320, 1400]], [[W - 580, 910], [W - 440, 1200], [W - 440, 1400], [W - 1320, 1400]],
-    [[700, 460], [1220, 470], [1350, 640]], [[700, 1130], [1220, 1030], [1350, 860]],
-    [[W - 700, 460], [W - 1220, 470], [1350, 640]], [[W - 700, 1130], [W - 1220, 1030], [1350, 860]],
-  ];
-  ctx.lineWidth = 90;
-  for (const l of lanes) { ctx.beginPath(); l.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); }
-  ctx.beginPath(); ctx.arc(1350, 750, 210, 0, Math.PI * 2); ctx.fillStyle = '#58523f'; ctx.fill();
+  ctx.fillStyle = '#1b1f1a'; ctx.fillRect(-2000, -2000, W + 4000, H + 4000);   // 場地外
+  ctx.save(); stadiumPath(ctx); ctx.fillStyle = '#34402f'; ctx.fill(); ctx.clip();
   for (const tm of G.teams) {
     const f = tm.floor;
     ctx.fillStyle = tm.id === 0 ? '#3e4552' : '#4d3d3d'; ctx.fillRect(f.x, f.y, f.w, f.h);
@@ -122,6 +112,12 @@ function drawGround() {
     for (let x = f.x; x < f.x + f.w; x += 40) { ctx.beginPath(); ctx.moveTo(x, f.y); ctx.lineTo(x, f.y + f.h); ctx.stroke(); }
     for (let y = f.y; y < f.y + f.h; y += 40) { ctx.beginPath(); ctx.moveTo(f.x, y); ctx.lineTo(f.x + f.w, y); ctx.stroke(); }
   }
+  ctx.restore();
+  // 野區虛線框
+  ctx.save(); ctx.setLineDash([6, 14]); ctx.lineCap = 'round'; ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(232,176,90,.45)';
+  ctx.strokeRect(WILD.x, WILD.y, WILD.w, WILD.h); ctx.restore();
+  // 場地外框
+  stadiumPath(ctx); ctx.lineWidth = 14; ctx.strokeStyle = '#15171a'; ctx.stroke();
 }
 
 function drawChar(c) {
@@ -193,9 +189,12 @@ const STATION_LOOK = {
 
 function drawStaticLayer() {
   for (const tm of G.teams) {
-    const z = tm.zone;
-    ctx.save(); ctx.setLineDash([14, 10]); ctx.lineWidth = 4; ctx.strokeStyle = tm.color + '99';
-    ctx.strokeRect(z.x - 6, z.y - 6, z.w + 12, z.h + 12); ctx.restore();
+    // 出餐口半圓與桌子
+    const pass = tm.pass, dir = tm.id === 0 ? 1 : -1;
+    ctx.beginPath(); ctx.arc(pass.x - dir * 50, pass.y, 150, -Math.PI / 2, Math.PI / 2, dir < 0);
+    ctx.lineWidth = 6; ctx.strokeStyle = tm.color + 'aa'; ctx.stroke();
+    const d = tm.desk;
+    rr(ctx, d.x, d.y, d.w, d.h, 8); ctx.fillStyle = '#5a5246'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = tm.color; ctx.stroke();
   }
   for (const r of G.waters) {
     ctx.fillStyle = '#25506e'; ctx.fillRect(r.x, r.y, r.w, r.h);
@@ -207,9 +206,16 @@ function drawStaticLayer() {
     ctx.fillStyle = '#8a8e99'; ctx.fillRect(r.x, r.y, r.w, Math.min(8, r.h));
     ctx.strokeStyle = '#2a2c31'; ctx.lineWidth = 2; ctx.strokeRect(r.x, r.y, r.w, r.h);
   }
+  for (const tm of G.teams) for (const dr of tm.doors) {
+    ctx.save(); ctx.translate(dr.x, dr.y);
+    ctx.beginPath(); ctx.moveTo(0, -dr.h / 2 - 10); ctx.lineTo(44, 0); ctx.lineTo(0, dr.h / 2 + 10); ctx.lineTo(-44, 0); ctx.closePath();
+    ctx.setLineDash([3, 9]); ctx.lineCap = 'round'; ctx.lineWidth = 5; ctx.strokeStyle = tm.color; ctx.stroke(); ctx.setLineDash([]);
+    text(ctx, '門', 0, 1, { size: 26, bold: true, align: 'center', color: tm.color, stroke: 'rgba(0,0,0,.6)' });
+    ctx.restore();
+  }
   for (const s of G.stations) {
     const tm = G.teams[s.team];
-    const L = s.quick ? { w: 60, h: 52, label: '就地鍋', fill: '#3c3c42' } : s.wall ? { ...STATION_LOOK.stove, label: '外壁鍋' } : STATION_LOOK[s.type];
+    const L = s.quick ? { w: 60, h: 52, label: '就地鍋', fill: '#3c3c42' } : s.wall ? { ...STATION_LOOK.stove, label: '火爐' } : STATION_LOOK[s.type];
     rr(ctx, s.x - L.w / 2, s.y - L.h / 2, L.w, L.h, 6); ctx.fillStyle = L.fill; ctx.fill();
     ctx.lineWidth = 3; ctx.strokeStyle = tm.color; ctx.stroke();
     if (s.type === 'stove') { ctx.beginPath(); ctx.arc(s.x, s.y + 2, 15, 0, Math.PI * 2); ctx.strokeStyle = '#222'; ctx.lineWidth = 4; ctx.stroke(); }
@@ -413,10 +419,11 @@ function drawMinimap() {
   const w = L.miniW, h = w * H / W, x = L.miniRight ? VW - w - 12 : 12, y = VH - h - 12 - L.miniLift * UI_SCALE, k = w / W;
   panel(x - 4, y - 4, w + 8, h + 8, 0.8);
   ctx.translate(x, y); ctx.scale(k, k);
-  ctx.fillStyle = '#34402f'; ctx.fillRect(0, 0, W, H);
+  ctx.save(); stadiumPath(ctx); ctx.fillStyle = '#34402f'; ctx.fill(); ctx.clip();
   for (const tm of G.teams) { ctx.fillStyle = tm.id === 0 ? '#3e4552' : '#4d3d3d'; const f = tm.floor; ctx.fillRect(f.x, f.y, f.w, f.h); }
+  ctx.restore();
   if (!G.reveal) {
-    ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
+    stadiumPath(ctx); ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fill();
     for (const poly of G.visPolys || []) { ctx.beginPath(); poly.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.closePath(); ctx.fillStyle = 'rgba(120,140,110,.55)'; ctx.fill(); }
   }
   ctx.fillStyle = '#25506e'; for (const r of G.waters) ctx.fillRect(r.x, r.y, r.w, r.h);
@@ -529,7 +536,7 @@ function drawToasts(dt) {
 const HELP = [
   'WASD 移動　滑鼠 瞄準　空白鍵 打暈',
   'E 互動：攻擊怪物、拾取、入庫、備料、放鍋',
-  '　　　　取餐、交餐、關敵方外壁鍋的火、開火',
+  '　　　　取餐、交餐、關敵方火爐的火、開火',
   '1～5 在備料台選料理（也可以直接點選單）',
   'Q 放下手上物品　R 收進背包（1 秒前搖）',
   'Tab 開關背包，拖到框外丟棄',

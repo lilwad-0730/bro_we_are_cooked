@@ -96,14 +96,14 @@ const reserve = (j, c, o) => { o.res = c.id; j.res.push(o); };
 const gloveSteps = on => c => (c.gloves === on ? null : [go(team(c).gloveRack), doAct(c => startGlove(c, on))]);
 const toolSteps = () => () => null;   // 已移除工具：雙方攻擊力相同
 
-// 外壁鍋要分內外側：己方從廚房裡面走過去，敵方從牆外走過去
+// 牆上的火爐分內外側：己方從廚房裡面走過去，敵方從牆外走過去
 // 角色是否在自己廚房裡或離廚房 m 像素內（對手不能進入那裡）
 function nearOwnKitchen(e, m) {
   const z = G.teams[e.team].zone;
   return e.x > z.x - m && e.x < z.x + z.w + m && e.y > z.y - m && e.y < z.y + z.h + m;
 }
-// tight：外壁鍋的站位點要走到幾乎正好的位置，否則會停在互動距離外
-const acc = (c, s) => (s.wall ? { x: s.x, y: s.y + (s.team === c.team ? 32 : -32), tight: true } : s);
+// tight：火爐的站位點要走到幾乎正好的位置，否則會停在互動距離外
+const acc = (c, s) => (s.wall ? { x: s.x + s.out * (s.team === c.team ? -42 : 42), y: s.y, tight: true } : s);
 
 // ---------------------------------------------------------------- 工作種類
 function pickNode(c, k) {
@@ -208,10 +208,10 @@ function cakeJob(c) {
   ], { recipe: 'cake' });
 }
 
-// 突襲：先埋伏在對方廚房上方的牆外，等外壁鍋開始烹調再去關火（只有外壁鍋能關）
+// 突襲：先埋伏在對方廚房牆外、兩口火爐中間，等火爐開始烹調再去關火
 function raidJob(c) {
   const et = G.teams[1 - c.team];
-  const lurk = P(1 - c.team, 300, 340);
+  const lurk = P(1 - c.team, 740, 600);
   const target = () => et.stoves.concat([et.quick]).find(s => flippable(s) && RECIPES[s.cooking].cook - s.progress > dist(c, s) / CFG.SPEED + 1.5);
   return job('raid', [
     c => (c.hand ? 'fail' : null),
@@ -229,11 +229,12 @@ function defendJob(c, s) {
 function guardJob(c) {
   // 有打暈次數的人閒下來時，去中央己方側埋伏搬貨的對手；否則回家看鍋
   if (c.stunOK && c.charges > 0 && !c.hand && Math.random() < 0.3 + team(c).aggr) {
-    const a = P(c.team, 1150 + Math.random() * 80, 600 + Math.random() * 300);
-    return job('guard', [go(a, 30), wait(() => false, 4)], { interruptible: true, idleJob: true });
+    const ns = G.nodes.filter(n => n.side === c.team), n = ns[Math.floor(Math.random() * ns.length)];
+    return job('guard', [go(n, 70), wait(() => false, 4)], { interruptible: true, idleJob: true });
   }
-  const g = team(c).guard;
-  return job('guard', [go({ x: g.x + (c.idx ? 40 : -40), y: g.y }, 30), wait(() => false, 2.5)], { interruptible: true, idleJob: true });
+  // 回家看鍋：每人守一口火爐，站在鍋旁就能打斷關火
+  const s = team(c).stoves[c.idx % 2];
+  return job('guard', [go(acc(c, s), 24), wait(() => false, 2.5)], { interruptible: true, idleJob: true });
 }
 function lootJob(c, it) {
   return job('loot', [go(it, 30), doAct(c => startPick(c, it))], { interruptible: false });
@@ -269,7 +270,7 @@ function cleanupJob(c) {
   if (h && h.kind === 'raw') {
     if (tm.storage.items.length < CFG.STORAGE_CAP) return job('deposit', depositSteps());
     if (bagFree(c) > 0) return job('stash', [doAct(c => startStoreBag(c, 'hand'))]);
-    return job('drop', [go(P(c.team, 700, 750), 30), doAct(c => dropHand(c))]);
+    return job('drop', [go(P(c.team, 760, 600), 30), doAct(c => dropHand(c))]);
   }
   if (bagRaw(c) && tm.storage.items.length < CFG.STORAGE_CAP) return job('deposit', depositSteps());
   const bagSemi = c.bag.find(i => i.kind === 'semi');
@@ -369,7 +370,7 @@ function planFor(c) {
     let rk = tl.find(k => hasAll(pool, RECIPES[k].ings));
     if (!rk && S.storage.length >= CFG.STORAGE_CAP) rk = ORDER_KEYS.find(k => !S.active.has(k) && hasAll(pool, RECIPES[k].ings));
     if (rk) { const j = cookJob(c, prep, rk); reserve(j, c, prep); return j; }
-    if (S.storage.length >= CFG.STORAGE_CAP && !c.hand) return job('trash', [go(tm.storage, 40), doAct(c => startTakeOut(c)), c => go(P(t, 700, 750), 30), doAct(c => dropHand(c))]);
+    if (S.storage.length >= CFG.STORAGE_CAP && !c.hand) return job('trash', [go(tm.storage, 40), doAct(c => startTakeOut(c)), c => go(P(t, 760, 600), 30), doAct(c => dropHand(c))]);
   }
 
   const remain = CFG.MATCH - G.time;

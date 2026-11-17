@@ -21,18 +21,96 @@ const rect = (x, y, w, h) => ({ x, y, w, h });
 const mirrorRect = r => ({ x: W - r.x - r.w, y: r.y, w: r.w, h: r.h });
 const P = (t, x, y) => (t === 0 ? { x, y } : { x: W - x, y });
 
-function buildMap() {
-  G.walls = []; G.stations = []; G.nodes = []; G.items = []; G.teams = [];
-  G.waters = [rect(0, 0, W, 60), rect(0, H - 60, W, 60)];
-  const sideWalls = [
-    rect(40, 400, 540, 24), rect(40, 1076, 540, 24), rect(40, 400, 24, 700),       // 廚房上、下、左牆（上牆有外壁鍋）
-    rect(556, 400, 24, 60), rect(556, 700, 24, 100), rect(556, 1040, 24, 60),       // 右側半開放：只有幾段短牆
-    rect(820, 250, 240, 170), rect(820, 1080, 240, 170),                            // 岩石
-    rect(480, 140, 860, 26), rect(480, H - 166, 860, 26),                           // 水邊懸崖：魚類點只能從西側窄道進入
-  ];
-  for (const r of sideWalls) { G.walls.push(r); G.walls.push(mirrorRect(r)); }
-  G.walls.push(rect(1230, 330, 240, 90), rect(1230, 1080, 240, 90));                // 中央石柱
-  G.solids = G.walls.concat(G.waters);
+// 地圖依使用者草圖【使用者指定】：跑道形場地，左右兩端是雙方廚房，中間是隨機種子產生的野區。
+// 場地：上下直線邊界，左右兩端半圓（圓心 ARENA.cx / W-ARENA.cx，半徑 ARENA.r）
+const ARENA = { top: 60, bot: H - 60, cx: 600, r: (H - 120) / 2 };
+const WALL_X = 648;                       // 廚房牆（藍隊；紅隊左右對稱）
+const DOORS = [[120, 220], [980, 1080]];   // 牆上兩扇門（y 範圍），只有自己隊伍能出入
+const STOVE_Y = [480, 720];               // 兩口火爐嵌在牆上
+const WILD = rect(800, 120, W - 1600, H - 240);   // 野區範圍（虛線框）
+
+function stadiumPath(c, inset = 0) {
+  const r = ARENA.r - inset, cy = (ARENA.top + ARENA.bot) / 2;
+  c.beginPath();
+  c.arc(ARENA.cx, cy, r, Math.PI / 2, Math.PI * 1.5);
+  c.arc(W - ARENA.cx, cy, r, -Math.PI / 2, Math.PI / 2);
+  c.closePath();
+}
+
+// 可重現的亂數：同一個種子產生同一張野區
+function mulberry32(a) {
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+function pickSeed() {
+  const q = new URLSearchParams(location.search).get('seed');
+  return q && /^\d+$/.test(q) ? +q : 1 + Math.floor(Math.random() * 99999);
+}
+
+function buildMap(seed) {
+  G.seed = seed === undefined ? pickSeed() : seed;
+  const rng = mulberry32(G.seed);
+  for (let attempt = 0; attempt < 30; attempt++) if (tryBuild(rng)) return;
+  tryBuild(mulberry32(1));
+}
+
+function tryBuild(rng) {
+  G.walls = []; G.stations = []; G.nodes = []; G.items = []; G.teams = []; G.waters = [];
+  // 場地邊界：上下兩條、兩端半圓用細條近似（只擋移動，不畫、不擋視線）
+  const cy = (ARENA.top + ARENA.bot) / 2;
+  G.bounds = [rect(0, 0, W, ARENA.top), rect(0, ARENA.bot, W, H - ARENA.bot)];
+  for (let y = ARENA.top; y < ARENA.bot; y += 20) {
+    const m = Math.max(Math.abs(y - cy), Math.abs(y + 20 - cy)) - (y < cy && y + 20 > cy ? 99999 : 0);
+    const mm = Math.max(0, m), e = ARENA.cx - Math.sqrt(Math.max(0, ARENA.r * ARENA.r - mm * mm));
+    if (e > 0) { const r = rect(0, y, e, 20); G.bounds.push(r, mirrorRect(r)); }
+  }
+  // 廚房牆：從上邊界到下邊界，留兩扇門
+  let y0 = ARENA.top;
+  const wallParts = [];
+  for (const [a, b] of DOORS) { wallParts.push(rect(WALL_X, y0, 24, a - y0)); y0 = b; }
+  wallParts.push(rect(WALL_X, y0, 24, ARENA.bot - y0));
+  for (const r of wallParts) G.walls.push(r, mirrorRect(r));
+
+  // 野區：隨機岩石＋食材怪物，左右對稱（公平），中線上放硬殼怪
+  const half = rect(WILD.x + 20, WILD.y, W / 2 - WILD.x - 80, WILD.h);
+  const rocks = [], spots = [];
+  const R = (a, b) => a + rng() * (b - a);
+  const overlap = (r, x, y, m) => x > r.x - m && x < r.x + r.w + m && y > r.y - m && y < r.y + r.h + m;
+  for (let k = 0, tries = 0; k < 5 && tries < 200; tries++) {
+    const w = R(80, 220), h = R(60, 200), r = rect(R(half.x + 60, half.x + half.w - w), R(half.y, half.y + half.h - h), w, h);
+    if (rocks.some(o => r.x < o.x + o.w + 90 && r.x + r.w + 90 > o.x && r.y < o.y + o.h + 90 && r.y + r.h + 90 > o.y)) continue;
+    rocks.push(r); k++;
+  }
+  const freeSpot = (x0, x1, minGap) => {
+    for (let tries = 0; tries < 300; tries++) {
+      const x = R(x0, x1), y = R(half.y + 40, half.y + half.h - 40);
+      if (rocks.some(r => overlap(r, x, y, 60))) continue;
+      if (spots.some(s => Math.hypot(s.x - x, s.y - y) < minGap)) continue;
+      return { x, y };
+    }
+    return null;
+  };
+  const left = [];
+  for (const [type, home] of [['veg', true], ['veg'], ['mush'], ['mush'], ['fish'], ['fish']]) {
+    const s = home ? freeSpot(half.x, half.x + 160, 150) : freeSpot(half.x + 120, half.x + half.w, 170);
+    if (!s) return false;
+    spots.push(s); left.push({ type, home, ...s });
+  }
+  const shells = [];
+  for (let k = 0; k < 3; k++) {
+    let s = null;
+    for (let tries = 0; tries < 200 && !s; tries++) {
+      const y = R(WILD.y + 60, WILD.y + WILD.h - 60);
+      if (!shells.some(o => Math.abs(o.y - y) < 160)) s = { x: W / 2, y };
+    }
+    if (!s) return false;
+    shells.push(s);
+  }
+  for (const r of rocks) G.walls.push(r, mirrorRect(r));
+  if (rng() < 0.6) {   // 中線偶爾有一塊大石頭
+    const h = R(80, 160), y = R(WILD.y + 40, WILD.y + WILD.h - 40 - h);
+    if (!shells.some(s => s.y > y - 70 && s.y < y + h + 70)) G.walls.push(rect(W / 2 - 50, y, 100, h));
+  }
+  G.solids = G.walls.concat(G.bounds);
 
   const cookState = () => ({ cooking: null, progress: 0, done: false, doneAt: 0, flipped: false, flippedOnce: false, beingFlipped: null });
   for (let t = 0; t < 2; t++) {
@@ -42,33 +120,40 @@ function buildMap() {
       G.stations.push(s); return s;
     };
     const tm = { id: t, ...TEAM_CFG[t], score: 0, lastScoreAt: Infinity, nextFlipCheck: 20, travel: {} };
-    // 廚房只有兩口外壁鍋（使用者指定）：都在上牆，從廚房內使用，也會被廚房外的敵人關火，沒有安全的內爐。
-    // 動線依鍋子位置排列：右側開口進來先到倉庫，旁邊是備料台，上牆是鍋子，出餐口與手套架都靠近鍋子。
-    tm.stoves = [st('stove', 300, 412, { ...cookState(), wall: true }), st('stove', 430, 412, { ...cookState(), wall: true })];
-    tm.quick = st('stove', 170, 412, { ...cookState(), quick: true, wall: true, raw: false, prepP: 0 });
-    tm.storage = st('storage', 470, 640, { items: [] });
-    tm.preps = [st('prep', 300, 560, { recipe: null, progress: 0, done: false }), st('prep', 300, 680, { recipe: null, progress: 0, done: false })];
-    tm.pass = st('pass', 510, 520);
-    tm.gloveRack = st('glove', 130, 560);
-    tm.guard = P(t, 365, 465);   // 守家：站在兩口外壁鍋中間，離鍋 70 像素內可打斷關火
-    tm.spawn = [P(t, 180, 640), P(t, 180, 740)];
-    tm.floor = t === 0 ? rect(64, 424, 492, 652) : mirrorRect(rect(64, 424, 492, 652));
-    // 敵方不可進入的範圍：整個廚房（含牆與右側開口）
-    tm.zone = t === 0 ? rect(40, 400, 544, 700) : mirrorRect(rect(40, 400, 544, 700));
+    // 兩口火爐嵌在廚房牆上（使用者指定）：己方從廚房內使用，敵方只能在牆外關火。out＝朝廚房外的方向
+    const out = t === 0 ? 1 : -1;
+    tm.stoves = STOVE_Y.map(y => st('stove', WALL_X + 12, y, { ...cookState(), wall: true, out }));
+    // 就地鍋只做收納蔬餅，放在廚房內，敵人碰不到【自行修改】
+    tm.quick = st('stove', 440, 880, { ...cookState(), quick: true, raw: false, prepP: 0 });
+    // 桌子：中間是倉庫，上下是備料台
+    tm.desk = t === 0 ? rect(255, 430, 90, 340) : mirrorRect(rect(255, 430, 90, 340));
+    tm.preps = [st('prep', 300, 480, { recipe: null, progress: 0, done: false }), st('prep', 300, 720, { recipe: null, progress: 0, done: false })];
+    tm.storage = st('storage', 300, 600, { items: [] });
+    tm.pass = st('pass', 110, 600);
+    tm.gloveRack = st('glove', 440, 320);
+    tm.spawn = [P(t, 480, 560), P(t, 480, 640)];
+    tm.floor = t === 0 ? rect(0, ARENA.top, WALL_X, ARENA.bot - ARENA.top) : mirrorRect(rect(0, ARENA.top, WALL_X, ARENA.bot - ARENA.top));
+    // 敵方不可進入的範圍：整個廚房（含牆與門）
+    tm.zone = t === 0 ? rect(0, 0, WALL_X + 24, H) : mirrorRect(rect(0, 0, WALL_X + 24, H));
+    tm.doors = DOORS.map(([a, b]) => ({ ...P(t, WALL_X + 12, (a + b) / 2), h: b - a }));
     G.teams.push(tm);
-
-    // 食材怪物：雙方共用，不分哪一邊；位置左右對稱只是為了公平
-    const node = (type, x, y, extra = {}) => {
-      const p = P(t, x, y);
-      G.nodes.push({ id: G.nodes.length, type, x: p.x, y: p.y, hp: CFG.MONSTER_HP, respawn: 0, res: null, side: t, lastHit: -1, ...extra });
-    };
-    node('veg', 740, 460, { home: true }); node('veg', 760, 1130);
-    node('mush', 1220, 470); node('mush', 1220, 1030);
-    node('fish', 1300, 100); node('fish', 1300, 1400);
+    for (const n of left) {
+      const p = P(t, n.x, n.y);
+      G.nodes.push({ id: G.nodes.length, type: n.type, x: p.x, y: p.y, hp: CFG.MONSTER_HP, respawn: 0, res: null, side: t, lastHit: -1, home: !!n.home });
+    }
   }
-  for (const y of [640, 750, 860]) G.nodes.push({ id: G.nodes.length, type: 'shell', x: 1350, y, hp: CFG.MONSTER_HP, respawn: 0, res: null, side: -1, lastHit: -1 });
+  for (const s of shells) G.nodes.push({ id: G.nodes.length, type: 'shell', x: s.x, y: s.y, hp: CFG.MONSTER_HP, respawn: 0, res: null, side: -1, lastHit: -1 });
   buildGrid();
+  // 確認雙方都走得到每一隻怪物
+  for (const tm of G.teams) {
+    const [ax, ay] = cellOf(tm.spawn[0].x, tm.spawn[0].y);
+    for (const n of G.nodes) {
+      const [bx, by] = freeCellNear(...cellOf(n.x, n.y), teamGrids[tm.id]);
+      if (!astar(ax, ay, bx, by, teamGrids[tm.id])) return false;
+    }
+  }
   buildSegs();
+  return true;
 }
 
 // ---------------------------------------------------------------- 路徑格

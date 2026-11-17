@@ -310,7 +310,7 @@ function startGlove(c, on) {
   return act(c, on ? '戴手套' : '脫手套', CFG.GLOVE, () => { c.gloves = on; });
 }
 
-// ---------------------------------------------------------------- 關火（使用者指定：只有廚房外壁的鍋能被廚房外的敵人關火）
+// ---------------------------------------------------------------- 關火（使用者指定：只有廚房牆上的火爐能被廚房外的敵人關火）
 // flipped 代表「火被關掉」：烹調暫停，直到己方開火
 const guardNear = s => G.chars.find(o => o.team === s.team && o.down <= 0 && dist(o, s) < CFG.GUARD_RANGE);
 const flippable = s => s.wall && s.cooking && !s.done && !s.flipped && !s.flippedOnce;
@@ -318,7 +318,7 @@ const flippable = s => s.wall && s.cooking && !s.done && !s.flipped && !s.flippe
 function startFlip(c, s) {
   if (busy(c)) return '動作中';
   if (s.team === c.team) return '不能關自己的火';
-  if (!s.wall) return '只能關廚房外壁的鍋';
+  if (!s.wall) return '只能關廚房牆上的火爐';
   if (!flippable(s)) return s.flippedOnce ? '這份料理已經被關過一次火' : '這口鍋沒有正在烹調';
   if (c.hand) return '雙手要空著才能關火';
   if (c.flipCd > 0) return '關火冷卻中';
@@ -326,13 +326,13 @@ function startFlip(c, s) {
   if (guardNear(s)) return '守方就在鍋旁，無法關火';
   s.beingFlipped = c.id;
   G.pings.push({ x: s.x, y: s.y, team: s.team, t: 0, dur: 3 });
-  log(s.team, '警示：' + c.name + ' 正在關' + G.teams[s.team].name + '外壁鍋的火！');
-  if (s.team === 0) toast('警示：我方外壁鍋正在被關火！', '#ff8a8a');
+  log(s.team, '警示：' + c.name + ' 正在關' + G.teams[s.team].name + '火爐的火！');
+  if (s.team === 0) toast('警示：我方火爐正在被關火！', '#ff8a8a');
   return act(c, '關火', CFG.FLIP_CHANNEL, () => {
     s.flipped = true; s.flippedOnce = true; s.beingFlipped = null;
     s.progress = Math.max(0, s.progress - CFG.FLIP_SETBACK);
     c.flipCd = CFG.FLIP_CD;
-    log(c.team, c.name + ' 關掉了' + G.teams[s.team].name + '外壁鍋的火（' + RECIPES[s.cooking].name + '）');
+    log(c.team, c.name + ' 關掉了' + G.teams[s.team].name + '火爐的火（' + RECIPES[s.cooking].name + '）');
     floatText(s.x, s.y - 30, '熄火！', '#ff7070');
   }, {
     check: () => {
@@ -458,9 +458,10 @@ function endMatch() {
   else G.winner = a.lastScoreAt < b.lastScoreAt ? 0 : 1;   // 同分：最後一次有效得分較早者勝
 }
 
-function newMatch() {
-  buildMap();
+function newMatch(seed) {
+  buildMap(seed);
   G.items = []; G.logs = []; G.fx = []; G.pings = []; G.toasts = [];
+  log(-1, '野區地圖種子：' + G.seed + '（網址加上 ?seed=' + G.seed + ' 可重玩同一張地圖）');
   G.tutorial = null;
   G.time = 0; G.rush = false; G.winner = undefined;
   G.roundDefs = [];

@@ -138,6 +138,15 @@ function drawBushes() {
   }
 }
 
+// 攻擊野怪中：手上出現菜刀，朝怪物劈砍（只在攻擊時出現）；畫在怪物上面，才看得到劈下去
+function drawKnives() {
+  for (const c of G.chars) {
+    const a = c.action;
+    if (!a || a.label !== '攻擊' || !a.target || c.down > 0 || !(c.team === 0 || seen(c))) continue;
+    drawKnife(ctx, c.x, c.y, Math.atan2(a.target.y - c.y, a.target.x - c.x), (a.t % CFG.GATHER_INT) / CFG.GATHER_INT, CFG.R);
+  }
+}
+
 function drawChar(c) {
   const tm = G.teams[c.team];
   ctx.save(); ctx.translate(c.x, c.y);
@@ -330,6 +339,7 @@ function drawWorld() {
   ctx.setTransform(z, 0, 0, z, VW / 2 - cam.x * z, VH / 2 - cam.y * z);
   drawStaticLayer();
   drawDynamicStations();
+  drawKnives();
   for (const p of G.pings) {
     if (p.team !== 0) continue;
     ctx.beginPath(); ctx.arc(p.x, p.y, 30 + 60 * (p.t % 1), 0, Math.PI * 2);

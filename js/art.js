@@ -237,3 +237,16 @@ function drawBrickWall(c, r) {
   c.restore();
   c.lineWidth = 2; c.strokeStyle = '#3a2418'; c.strokeRect(r.x, r.y, r.w, r.h);
 }
+
+// ---------------------------------------------------------------- 菜刀：攻擊野怪時才出現（使用者指定，只是視覺輔助，攻擊力不變）
+// 以角色中心為原點、朝 ang 方向畫一把菜刀；phase 0～1 是一次攻擊間隔，接近 1 時劈下（與扣血同步）
+function drawKnife(c, x, y, ang, phase, r) {
+  const swing = phase < 0.8 ? 0.5 - 1.8 * (phase / 0.8) : -1.3 + 1.9 * ((phase - 0.8) / 0.2);
+  c.save(); c.translate(x, y); c.rotate(ang + swing);
+  rrect(c, r - 2, -3, 12, 6, 2); fillStroke(c, '#3a2616', '#120b05', 1.2);              // 刀柄
+  c.beginPath(); c.arc(r + 3, 0, 1.2, 0, Math.PI * 2); c.fillStyle = '#d9c9a0'; c.fill(); // 鉚釘
+  c.beginPath(); c.moveTo(r + 10, -4); c.lineTo(r + 30, -4); c.quadraticCurveTo(r + 33, 2, r + 28, 8); c.lineTo(r + 10, 8); c.closePath();
+  fillStroke(c, '#e6eaef', '#5a616b', 1.4);                                               // 刀身
+  c.beginPath(); c.moveTo(r + 11, -3); c.lineTo(r + 29, -3); c.lineWidth = 1.5; c.strokeStyle = '#ffffff'; c.stroke();  // 刀背反光
+  c.restore();
+}

@@ -191,7 +191,7 @@ cv.addEventListener('mouseup', () => {
 cv.addEventListener('wheel', e => {
   e.preventDefault();
   UI.fit = false;
-  cam.zoom = clamp(cam.zoom * (e.deltaY < 0 ? 1.1 : 0.9), 0.3, 1.6);
+  cam.zoom = clamp(cam.zoom * (e.deltaY < 0 ? 1.1 : 0.9), 0.3 * screenFactor(), 1.6);
 }, { passive: false });
 
 function updateCamera(dt) {
@@ -201,7 +201,9 @@ function updateCamera(dt) {
     cam.x += (W / 2 - cam.x) * Math.min(1, dt * 6); cam.y += (H / 2 - cam.y) * Math.min(1, dt * 6);
     return;
   }
-  if (cam.zoom < 0.55) cam.zoom += (0.8 - cam.zoom) * Math.min(1, dt * 4);
+  const base = 0.8 * screenFactor();
+  if (UI.zoomFor !== base) { UI.zoomFor = base; cam.zoom = base; }   // 螢幕大小改變時重設成該螢幕的預設縮放
+  if (cam.zoom < base * 0.7) cam.zoom += (base - cam.zoom) * Math.min(1, dt * 4);
   const c = player();
   cam.x += (c.x - cam.x) * Math.min(1, dt * 6); cam.y += (c.y - cam.y) * Math.min(1, dt * 6);
 }

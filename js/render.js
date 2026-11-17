@@ -9,7 +9,21 @@ let VW = 0, VH = 0;
 const cam = { x: W / 2, y: H / 2, zoom: 0.8 };
 const UI = { bagRect: null, slotRects: null, drag: null, mouse: { x: 0, y: 0 } };
 
-function resize() { VW = cv.width = innerWidth; VH = cv.height = innerHeight; fogC.width = VW; fogC.height = VH; }
+// 高解析度螢幕（手機多為 2～3 倍）：畫布依像素密度繪製，文字才不會糊。上限 2 倍以免手機效能吃緊。
+// 所有繪圖程式都用 CSS 像素座標；把 setTransform 包一層，自動乘上像素密度。
+let DPR = 1;
+for (const c of [ctx, fctx]) {
+  const st = c.setTransform.bind(c);
+  c.setTransform = (a, b, cc, d, e, f) => st(a * DPR, b * DPR, cc * DPR, d * DPR, e * DPR, f * DPR);
+}
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  VW = innerWidth; VH = innerHeight;
+  cv.width = fogC.width = Math.round(VW * DPR);
+  cv.height = fogC.height = Math.round(VH * DPR);
+  cv.style.width = VW + 'px'; cv.style.height = VH + 'px';
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
 addEventListener('resize', resize);
 resize();
 
@@ -150,7 +164,7 @@ function drawFog() {
     fctx.fillStyle = g;
     fctx.beginPath(); poly.forEach((p, i) => (i ? fctx.lineTo(p.x, p.y) : fctx.moveTo(p.x, p.y))); fctx.closePath(); fctx.fill();
   }
-  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(fogC, 0, 0); ctx.restore();
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(fogC, 0, 0, VW, VH); ctx.restore();
 }
 
 const STATION_LOOK = {
@@ -247,9 +261,13 @@ function drawWorld() {
 // ---------------------------------------------------------------- 介面
 // 介面整層放大 UI_SCALE 倍繪製（字、框、間距等比例放大）。以下座標都是放大前的「介面單位」：
 // 畫面寬 UW = VW / UI_SCALE、高 UH = VH / UI_SCALE。小地圖例外，維持實際像素大小。
-const UI_SCALE = 2;
+// 響應式：以 1280×720 的電腦畫面為基準。螢幕比基準大時介面維持兩倍；
+// 比基準小（例如手機）時，整個介面依螢幕等比例縮小，讓文字與框架占畫面的比例和電腦上相同。
+const UI_REF_W = 1280, UI_REF_H = 720;
+let UI_SCALE = 2;
+const screenFactor = () => Math.min(1, VW / UI_REF_W, VH / UI_REF_H);   // 1＝電腦，<1＝較小的螢幕
 let UW = 0, UH = 0;
-const MINI_W = 300;                                   // 小地圖寬（實際像素）
+let MINI_W = 300;                                     // 小地圖寬（實際像素，隨螢幕等比例縮放）
 // 小地圖外框占用的介面空間；w 是小地圖實際像素寬
 const miniBox = (w = MINI_W) => ({ w: (w + 24) / UI_SCALE, h: (w * H / W + 24) / UI_SCALE });
 
@@ -555,8 +573,27 @@ function drawJoystick() {
 }
 
 let lastRender = performance.now();
+function updateUIScale() {
+  const f = screenFactor();
+  UI_SCALE = 2 * f;
+  MINI_W = 300 * f;
+}
+
+// 手機直拿時提示橫放（遊戲畫面是橫向的）
+function drawRotateHint() {
+  if (VH <= VW * 1.1) return;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const s = 'ontouchstart' in window ? '請將手機橫放，畫面會更清楚' : '請把視窗拉寬，畫面會更清楚';
+  ctx.font = font(16, true);
+  const w = ctx.measureText(s).width + 28;
+  ctx.fillStyle = 'rgba(16,18,24,.88)'; rr(ctx, VW / 2 - w / 2, 8, w, 34, 17); ctx.fill();
+  ctx.fillStyle = '#ffd27a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(s, VW / 2, 26);
+  ctx.restore();
+}
+
 function render() {
   const now = performance.now(), dt = (now - lastRender) / 1000; lastRender = now;
+  updateUIScale();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#111318'; ctx.fillRect(0, 0, VW, VH);
   drawWorld();
@@ -566,4 +603,5 @@ function render() {
   drawOverlay();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   drawJoystick();
+  drawRotateHint();
 }

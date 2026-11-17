@@ -68,12 +68,20 @@ function controlPlayer(dt) {
   if (keys.has('KeyS') || keys.has('ArrowDown')) my += 1;
   if (keys.has('KeyA') || keys.has('ArrowLeft')) mx -= 1;
   if (keys.has('KeyD') || keys.has('ArrowRight')) mx += 1;
-  const m = toWorld(UI.mouse.x, UI.mouse.y);
-  if (!(c.action && c.action.label === '打暈前搖')) c.face = Math.atan2(m.y - c.y, m.x - c.x);
+  // 觸控搖桿：方向＝手指相對錨點的方向；拖得越遠越快，超過半徑就是全速
+  let mag = 1;
+  const j = UI.joy;
+  if (j) {
+    const dx = j.x - j.ax, dy = j.y - j.ay, d = Math.hypot(dx, dy);
+    if (d > JOY_DEAD) { mx = dx / d; my = dy / d; mag = Math.min(1, d / JOY_R); }
+  }
+  const winding = c.action && c.action.label === '打暈前搖';
+  if (!UI.touchMode && !winding) { const m = toWorld(UI.mouse.x, UI.mouse.y); c.face = Math.atan2(m.y - c.y, m.x - c.x); }
   if (!mx && !my) return;
+  if (UI.touchMode && !winding) c.face = Math.atan2(my, mx);   // 觸控時面向移動方向
   if (c.action && c.action.lock) cancelAction(c, c.action.label + '被移動中斷');
   if (c.action && c.action.lock) return;
-  const l = Math.hypot(mx, my), sp = speedOf(c) * dt;
+  const l = Math.hypot(mx, my), sp = speedOf(c) * dt * mag;
   moveChar(c, mx / l * sp, my / l * sp);
 }
 
@@ -88,7 +96,7 @@ function playerKey(code) {
     if (m) r = m.run();
   } else if (code === 'KeyQ') r = dropHand(c);
   else if (code === 'KeyR') r = startStoreBag(c, 'hand');
-  else if (code === 'Space') { const m = toWorld(UI.mouse.x, UI.mouse.y); r = startStun(c, Math.atan2(m.y - c.y, m.x - c.x)); }
+  else if (code === 'Space') { const m = toWorld(UI.mouse.x, UI.mouse.y); r = startStun(c, UI.touchMode ? c.face : Math.atan2(m.y - c.y, m.x - c.x)); }
   if (typeof r === 'string') say(c, r);
 }
 
@@ -130,7 +138,35 @@ addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
 
 const inRect = (p, r) => r && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
-cv.addEventListener('mousemove', e => { UI.mouse.x = e.clientX; UI.mouse.y = e.clientY; });
+cv.addEventListener('mousemove', e => { UI.mouse.x = e.clientX; UI.mouse.y = e.clientY; UI.touchMode = false; });
+
+// ---------------------------------------------------------------- 觸控搖桿
+// 左半邊：手指按下的位置就是錨點，往不同方向拖就移動；放開手指取消錨點，下次按下再重新放置。
+// 右半邊：保留給動作按鈕；在標題、結算畫面與教學說明步驟中，點一下代替按鍵。
+const JOY_R = 60, JOY_DEAD = 8;   // 搖桿半徑與中心死區（實際像素）
+UI.joy = null;
+function onTouchStart(e) {
+  e.preventDefault();
+  UI.touchMode = true;
+  for (const t of e.changedTouches) {
+    const left = t.clientX < VW / 2;
+    if (G.state !== 'play') { if (left) startGame(false); else startTutorial(); return; }
+    if (left && !UI.joy) UI.joy = { id: t.identifier, ax: t.clientX, ay: t.clientY, x: t.clientX, y: t.clientY };
+    else if (!left && G.tutorial) tutorialKey('Enter');
+  }
+}
+function onTouchMove(e) {
+  e.preventDefault();
+  for (const t of e.changedTouches) if (UI.joy && t.identifier === UI.joy.id) { UI.joy.x = t.clientX; UI.joy.y = t.clientY; }
+}
+function onTouchEnd(e) {
+  e.preventDefault();
+  for (const t of e.changedTouches) if (UI.joy && t.identifier === UI.joy.id) UI.joy = null;
+}
+cv.addEventListener('touchstart', onTouchStart, { passive: false });
+cv.addEventListener('touchmove', onTouchMove, { passive: false });
+cv.addEventListener('touchend', onTouchEnd, { passive: false });
+cv.addEventListener('touchcancel', onTouchEnd, { passive: false });
 cv.addEventListener('mousedown', e => {
   const c = player();
   if (!UI.bagOpen || !UI.slotRects) return;

@@ -508,6 +508,7 @@ function drawOverlay() {
       { t: '六分鐘內規劃訂單，防範對方翻鍋與打暈。', size: 15, color: '#ccc', gap: 28 },
       ...HELP.map(t => ({ t, size: 15, gap: 21 })),
       { t: 'Enter 開始　｜　T 教學關卡　｜　V 觀戰', size: 18, bold: true, color: '#ffd27a', gap: 34 },
+      ...('ontouchstart' in window ? [{ t: '觸控：點左半邊開始，點右半邊進入教學', size: 15, color: '#ffd27a', gap: 24 }] : []),
       { t: '倉庫到採集點：' + Object.entries(m).map(([k, v]) => k + ' ' + v + ' 秒').join('　'), size: 12, color: '#888', gap: 16 },
     ]);
   } else if (G.state === 'end') {
@@ -524,6 +525,18 @@ function drawOverlay() {
   }
 }
 
+function drawJoystick() {
+  const j = UI.joy;
+  if (!j || G.state !== 'play') return;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const dx = j.x - j.ax, dy = j.y - j.ay, d = Math.hypot(dx, dy), k = d > JOY_R ? JOY_R / d : 1;
+  ctx.beginPath(); ctx.arc(j.ax, j.ay, JOY_R, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(j.ax + dx * k, j.ay + dy * k, JOY_R * 0.45, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,214,90,.75)'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(58,30,10,.8)'; ctx.stroke();
+  ctx.restore();
+}
+
 let lastRender = performance.now();
 function render() {
   const now = performance.now(), dt = (now - lastRender) / 1000; lastRender = now;
@@ -535,4 +548,5 @@ function render() {
   if (G.state !== 'title') { drawOrders(); drawTopBar(); drawLog(); drawMinimap(); drawPlayerPanel(); if (G.tutorial) tutorialHUD(); drawToasts(dt); }
   drawOverlay();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  drawJoystick();
 }

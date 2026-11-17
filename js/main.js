@@ -10,12 +10,12 @@ function getContext(c) {
   const sts = G.stations.filter(s => near(c, s)).sort((a, b) => dist(a, c) - dist(b, c));
   for (const s of sts) {
     if (s.team !== c.team) {
-      if (s.type === 'stove' && flippable(s)) return { label: 'E 翻鍋（按住 1.5 秒，對方會收到警示）', btn: '翻鍋', run: () => startFlip(c, s) };
+      if (s.type === 'stove' && flippable(s)) return { label: 'E 關火（按住 1.5 秒，對方會收到警示）', btn: '關火', run: () => startFlip(c, s) };
       continue;
     }
     switch (s.type) {
       case 'stove':
-        if (s.flipped) return { label: 'E 扶正鍋子', btn: '扶正', run: () => startFix(c, s) };
+        if (s.flipped) return { label: 'E 重新開火', btn: '開火', run: () => startFix(c, s) };
         if (s.done && RECIPES[s.cooking].ability) return { label: 'E 食用' + RECIPES[s.cooking].name, btn: '食用', run: () => startEat(c, s) };
         if (s.done) return { label: c.gloves ? 'E 取成品' : '成品要戴手套才能拿（到手套架按 E）', btn: '取成品', run: () => startTakeDish(c, s) };
         if (s.quick) {
@@ -47,15 +47,15 @@ function getContext(c) {
         return { label: c.gloves ? 'E 脫下手套' : 'E 戴上手套（拿成品必備）', btn: c.gloves ? '脫手套' : '戴手套', run: () => startGlove(c, !c.gloves) };
     }
   }
-  const it = G.items.filter(i => near(c, i, 44)).sort((a, b) => dist(a, c) - dist(b, c))[0];
+  const it = G.items.filter(i => near(c, i, 44) && (i.team === undefined || i.team === c.team)).sort((a, b) => dist(a, c) - dist(b, c))[0];
   if (it) {
     if (!c.hand) return { label: 'E 拾取' + itemName(it) + (it.kind === 'dish' && !c.gloves ? '（需要手套）' : ''), btn: '拾取', run: () => startPick(c, it) };
     if (it.kind !== 'dish' && bagFree(c) > 0) return { label: 'E 把' + itemName(it) + '收進背包（1 秒前搖）', btn: '收進背包', run: () => startStoreBag(c, it) };
   }
   const n = G.nodes.filter(n => near(c, n)).sort((a, b) => dist(a, c) - dist(b, c))[0];
   if (n) {
-    if (n.hp <= 0) return { label: '採集點重生中 ' + Math.ceil(n.respawn) + ' 秒' };
-    return { label: 'E 採集' + ING[n.type].name + (ING[n.type].tool === c.tool ? '' : '（' + TOOLS[c.tool] + '不剋制，較慢）'), btn: '採集', run: () => startGather(c, n) };
+    if (n.hp <= 0) return { label: '食材怪物重生中 ' + Math.ceil(n.respawn) + ' 秒' };
+    return { label: 'E 攻擊' + ING[n.type].name + '怪物（血量 ' + n.hp + '/' + CFG.MONSTER_HP + '，最後一擊拿到食材）', btn: '攻擊', run: () => startGather(c, n) };
   }
   return null;
 }

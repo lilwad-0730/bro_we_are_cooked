@@ -9,7 +9,9 @@ const CFG = {
   HAND_SPEED: 1.0,       // 文件：手搬速度待測，先不減速
   R: 14,                 // 角色半徑（像素）
 
-  NODE_HP: 3, DMG_STRONG: 2, DMG_WEAK: 1, GATHER_INT: 0.8, NODE_RESPAWN: 12, // 文件
+  MONSTER_HP: 4,         // 食材怪物血量（使用者指定有血條；數值自行修改）
+  DMG: 1,                // 雙方攻擊力相同（使用者指定），每一擊扣 1
+  GATHER_INT: 0.8, NODE_RESPAWN: 12, // 文件：攻擊間隔、怪物重生
   PICK: 0.5,             // 文件 v0.6 試算：用手拾取
   DEPOSIT: 1,            // 文件：原料入庫
   BAG_PREP: 1,           // 文件：收納前搖
@@ -22,7 +24,7 @@ const CFG = {
   STUN_WINDUP: 0.8, STUN_CD: 12, STUN_DOWN: 3, STUN_IMMUNE: 2, CHARGES: 3, // 文件
   STUN_RANGE: 110,       // 自行修改：文件未定範圍；85 實測命中率 21–36%，調到 110 約 43%
   STUN_ARC: Math.PI * 2 / 3, // 自行修改：扇形 120 度
-  FLIP_CHANNEL: 1.5, FLIP_SETBACK: 5, FLIP_CD: 4, FIX: 1, // 文件 v0.6
+  FLIP_CHANNEL: 1.5, FLIP_SETBACK: 0, FLIP_CD: 4, FIX: 1, // 關火：按住 1.5 秒；只停火、不倒退進度（自行修改），己方開火 1 秒
   GUARD_RANGE: 70,       // 自行修改：守方在鍋旁多近可打斷翻鍋
 
   RUSH: 60, RUSH_MULT: 1.5, // 文件 v0.6：尖峰時段

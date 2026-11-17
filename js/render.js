@@ -139,7 +139,7 @@ function drawChar(c) {
   if (c.gloves) { ctx.beginPath(); ctx.arc(0, 0, CFG.R + 3, 0, Math.PI * 2); ctx.strokeStyle = '#ff9f43'; ctx.lineWidth = 3; ctx.stroke(); }
   c.bag.forEach((it, i) => drawItemIcon(ctx, it.kind, it.key, -CFG.R - 4 + i * 18, CFG.R - 4, 10));
   if (c.hand) drawItemIcon(ctx, c.hand.kind, c.hand.key, 0, -CFG.R - 18, 14);
-  text(ctx, c.name + ' ' + TOOLS[c.tool].slice(-1) + (c.stunOK ? ' ' + '●'.repeat(c.charges) + '○'.repeat(CFG.CHARGES - c.charges) : ''), 0, CFG.R + 20,
+  text(ctx, c.name + (c.stunOK ? ' ' + '●'.repeat(c.charges) + '○'.repeat(CFG.CHARGES - c.charges) : ''), 0, CFG.R + 20,
     { size: 22, bold: true, align: 'center', color: '#fff', stroke: 'rgba(0,0,0,.8)' });
   if (c.action && c.action.dur < 90) bar(ctx, 0, -CFG.R - 42, 56, c.action.t / c.action.dur, '#ffd25e', 8);
   if (c.down > 0) bar(ctx, 0, -CFG.R - 42, 56, 1 - c.down / CFG.STUN_DOWN, '#bbb', 8);
@@ -192,6 +192,11 @@ const STATION_LOOK = {
 };
 
 function drawStaticLayer() {
+  for (const tm of G.teams) {
+    const z = tm.zone;
+    ctx.save(); ctx.setLineDash([14, 10]); ctx.lineWidth = 4; ctx.strokeStyle = tm.color + '99';
+    ctx.strokeRect(z.x - 6, z.y - 6, z.w + 12, z.h + 12); ctx.restore();
+  }
   for (const r of G.waters) {
     ctx.fillStyle = '#25506e'; ctx.fillRect(r.x, r.y, r.w, r.h);
     ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 2;
@@ -204,7 +209,7 @@ function drawStaticLayer() {
   }
   for (const s of G.stations) {
     const tm = G.teams[s.team];
-    const L = s.quick ? { w: 60, h: 52, label: '就地鍋', fill: '#3c3c42' } : STATION_LOOK[s.type];
+    const L = s.quick ? { w: 60, h: 52, label: '就地鍋', fill: '#3c3c42' } : s.wall ? { ...STATION_LOOK.stove, label: '外壁鍋' } : STATION_LOOK[s.type];
     rr(ctx, s.x - L.w / 2, s.y - L.h / 2, L.w, L.h, 6); ctx.fillStyle = L.fill; ctx.fill();
     ctx.lineWidth = 3; ctx.strokeStyle = tm.color; ctx.stroke();
     if (s.type === 'stove') { ctx.beginPath(); ctx.arc(s.x, s.y + 2, 15, 0, Math.PI * 2); ctx.strokeStyle = '#222'; ctx.lineWidth = 4; ctx.stroke(); }
@@ -233,17 +238,22 @@ function drawDynamicStations() {
         const r = RECIPES[s.cooking];
         drawItemIcon(ctx, s.done ? 'dish' : 'semi', s.cooking, s.x, s.y + 2, 14);
         if (!s.done) bar(ctx, s.x, s.y + 18, 54, s.progress / r.cook, s.flipped ? '#ff5d5d' : '#6fdc6f');
-        if (s.flipped) text(ctx, '翻倒！', s.x, s.y - 62, { size: 28, bold: true, align: 'center', color: '#ff6b6b', stroke: '#000' });
-        if (s.beingFlipped !== null && s.beingFlipped !== undefined) text(ctx, '正在被翻', s.x, s.y - 62, { size: 26, bold: true, align: 'center', color: '#ffb36b', stroke: '#000' });
+        if (s.flipped) text(ctx, '熄火！', s.x, s.y - 62, { size: 28, bold: true, align: 'center', color: '#ff6b6b', stroke: '#000' });
+        if (s.beingFlipped !== null && s.beingFlipped !== undefined) text(ctx, '正在被關火', s.x, s.y - 62, { size: 26, bold: true, align: 'center', color: '#ffb36b', stroke: '#000' });
         if (s.done) text(ctx, r.ability ? '可食用' : '可取餐', s.x, s.y + 38, { size: 22, bold: true, align: 'center', color: '#9f9', stroke: '#000' });
       }
     }
   }
+  // 食材怪物：視野內才看得到牠的狀態；血條歸零時，打出最後一擊的隊伍拿到食材
   for (const n of G.nodes) {
     if (!seen(n)) { text(ctx, ING[n.type].ch, n.x, n.y + 1, { size: 28, align: 'center', color: 'rgba(255,255,255,.45)' }); continue; }
     if (n.hp > 0) {
-      text(ctx, ING[n.type].ch, n.x, n.y + 1, { size: 30, bold: true, align: 'center', color: '#fff', stroke: 'rgba(0,0,0,.6)' });
-      for (let i = 0; i < CFG.NODE_HP; i++) { ctx.beginPath(); ctx.arc(n.x - 14 + i * 14, n.y + 32, 5, 0, Math.PI * 2); ctx.fillStyle = i < n.hp ? ING[n.type].color : '#333'; ctx.fill(); }
+      const bob = Math.sin(performance.now() / 300 + n.id) * 2;
+      ctx.beginPath(); ctx.arc(n.x, n.y + bob, 22, 0, Math.PI * 2); ctx.fillStyle = ING[n.type].color; ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.stroke();
+      for (const ex of [-7, 7]) { ctx.beginPath(); ctx.arc(n.x + ex, n.y - 6 + bob, 4, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.beginPath(); ctx.arc(n.x + ex, n.y - 5 + bob, 2, 0, Math.PI * 2); ctx.fillStyle = '#111'; ctx.fill(); }
+      text(ctx, ING[n.type].ch, n.x, n.y + 8 + bob, { size: 18, bold: true, align: 'center', color: '#111', flat: true });
+      bar(ctx, n.x, n.y - 38, 50, n.hp / CFG.MONSTER_HP, n.hp <= 1 ? '#ff6b6b' : '#7ee07e', 7);
     } else text(ctx, Math.ceil(n.respawn) + '', n.x, n.y + 1, { size: 26, bold: true, align: 'center', color: '#aaa' });
   }
 }
@@ -346,42 +356,35 @@ function drawTopBar() {
   text(ctx, G.teams[0].score + '', x + sx, 30, { size: 26, bold: true, align: 'center', color: G.teams[0].color });
   text(ctx, G.teams[1].score + '', x + w - sx, 30, { size: 26, bold: true, align: 'center', color: G.teams[1].color });
   text(ctx, G.tutorial ? '教學' : mm + ':' + String(ss).padStart(2, '0'), x + w / 2, 26, { size: 24, bold: true, align: 'center', color: remain <= CFG.RUSH ? '#ffb347' : '#fff' });
-  text(ctx, G.rush ? '尖峰 ×1.5' : '第 ' + G.round + ' 輪', x + w / 2, 46, { size: 11, align: 'center', color: G.rush ? '#ffb347' : '#bbb' });
+  text(ctx, G.rush ? '尖峰 ×1.5' : '我方第 ' + (G.teams[0].round + 1) + ' 輪', x + w / 2, 46, { size: 11, align: 'center', color: G.rush ? '#ffb347' : '#bbb' });
   text(ctx, '我方', x + 8, 13, { size: 11, color: '#aaa', base: 'top' });
   text(ctx, '敵方', x + w - 8, 13, { size: 11, align: 'right', color: '#aaa', base: 'top' });
   const st = [G.paused ? '暫停' : '', G.speed !== 1 ? '×' + G.speed : '', G.spectate ? '觀戰' : '', G.reveal ? '全圖' : ''].filter(Boolean).join(' ');
   if (!touchUI()) text(ctx, (st ? st + '　' : '') + 'H 說明', UW - 8, L.stY, { size: 13, align: 'right', color: st ? '#ffd27a' : '#999' });
 }
 
-// 訂單：左側直排三張卡片
+// 訂單：左側直排我方這一輪的三道菜（雙方內容相同、進度分開），下方是敵方進度與下一輪預告
 function drawOrders() {
   const x = 6, y = L.ordY, cw = 160, ch = L.ordCh, gap = 4, compact = ch < 60;
-  const showPreview = G.nextOrders && L.ordPreview;
-  const preview = showPreview ? 34 : 0;
-  panel(x, y, cw + 8, 24 + 3 * (ch + gap) + preview);
-  text(ctx, '共用訂單（先交先得）', x + 8, y + 13, { size: 13, bold: true, color: '#ddd' });
-  const mineA = activeRecipes(0), theirA = activeRecipes(1);
-  G.orders.forEach((o, i) => {
+  const me = G.teams[0], foe = G.teams[1], orders = teamOrders(0);
+  const showInfo = L.ordPreview;
+  panel(x, y, cw + 8, 24 + 3 * (ch + gap) + (showInfo ? 34 : 0));
+  text(ctx, '我方訂單　第 ' + (me.round + 1) + ' 輪', x + 8, y + 13, { size: 13, bold: true, color: '#ddd' });
+  const mineA = activeRecipes(0);
+  orders.forEach((o, i) => {
     const cx = x + 4, cy = y + 24 + i * (ch + gap);
     rr(ctx, cx, cy, cw, ch, 5);
-    ctx.fillStyle = o.doneBy < 0 ? 'rgba(255,255,255,.08)' : (o.doneBy === 0 ? 'rgba(76,155,255,.28)' : 'rgba(255,93,93,.28)'); ctx.fill();
-    text(ctx, RECIPES[o.key].name, cx + 6, cy + 12, { size: 15, bold: true });
+    ctx.fillStyle = o.done ? 'rgba(76,155,255,.28)' : 'rgba(255,255,255,.08)'; ctx.fill();
+    text(ctx, RECIPES[o.key].name, cx + 6, cy + 12, { size: 15, bold: true, color: o.done ? '#9fc4ff' : '#fff' });
     text(ctx, o.score + '', cx + cw - 6, cy + 12, { size: 14, bold: true, align: 'right', color: '#ffd27a' });
     RECIPES[o.key].ings.forEach((k, j) => drawItemIcon(ctx, 'raw', k, cx + 14 + j * 24, cy + 31, 10));
-    if (o.doneBy >= 0) text(ctx, (o.doneBy === 0 ? '我方' : '敵方') + '完成', cx + cw - 6, cy + 31, { size: 13, bold: true, align: 'right', color: G.teams[o.doneBy].color });
-    else if (compact) {
-      // 精簡卡片：只在右側標出敵方是否正在做
-      if (theirA.has(o.key)) text(ctx, '敵製作中', cx + cw - 6, cy + 31, { size: 11, align: 'right', color: G.teams[1].color });
-      else if (mineA.has(o.key)) text(ctx, '我製作中', cx + cw - 6, cy + 31, { size: 11, align: 'right', color: G.teams[0].color });
-    } else {
-      if (mineA.has(o.key)) text(ctx, '我方製作中', cx + 6, cy + 51, { size: 11, color: G.teams[0].color });
-      if (theirA.has(o.key)) text(ctx, '敵方製作中', cx + cw - 6, cy + 51, { size: 11, align: 'right', color: G.teams[1].color });
-    }
+    if (o.done) text(ctx, '已完成', cx + cw - 6, cy + 31, { size: 13, bold: true, align: 'right', color: me.color });
+    else if (mineA.has(o.key)) text(ctx, '製作中', cx + cw - 6, cy + (compact ? 31 : 51), { size: 11, align: 'right', color: me.color });
   });
-  if (showPreview) {
+  if (showInfo) {
     const py = y + 24 + 3 * (ch + gap);
-    text(ctx, '下一輪預告：', x + 8, py + 8, { size: 12, color: '#bbb' });
-    text(ctx, G.nextOrders.map(o => RECIPES[o.key].name).join('、'), x + 8, py + 24, { size: 12, color: '#ddd' });
+    text(ctx, '敵方：第 ' + (foe.round + 1) + ' 輪 ' + foe.done.length + '/3', x + 8, py + 8, { size: 12, color: foe.color });
+    if (orders.filter(o => !o.done).length === 1) text(ctx, '下一輪：' + roundDef(me.round + 1).map(k => RECIPES[k].short).join('、'), x + 8, py + 24, { size: 12, color: '#ccc' });
   }
 }
 
@@ -460,9 +463,9 @@ function drawPlayerPanel() {
   }
   const tx = x + 54 + CFG.BAG_SLOTS * 44 + 6;
   const lines = [
-    TOOLS[c.tool] + (c.gloves ? '｜戴手套' : '') + '｜速度 ' + Math.round(speedOf(c) / CFG.SPEED * 100) + '%',
+    (c.gloves ? '戴手套｜' : '') + '速度 ' + Math.round(speedOf(c) / CFG.SPEED * 100) + '%',
     '打暈 ' + (c.stunOK ? c.charges + ' 次' + (c.stunCd > 0 ? '（冷卻 ' + Math.ceil(c.stunCd) + '）' : '') : '未解鎖'),
-    '翻鍋 ' + (c.flipCd > 0 ? '冷卻 ' + Math.ceil(c.flipCd) + ' 秒' : '可用'),
+    '關火 ' + (c.flipCd > 0 ? '冷卻 ' + Math.ceil(c.flipCd) + ' 秒' : '可用'),
   ];
   lines.forEach((l, i) => text(ctx, l, tx, y + 15 + i * 21, { size: 13, color: '#e6e6e6' }));
 
@@ -525,9 +528,9 @@ function drawToasts(dt) {
 
 const HELP = [
   'WASD 移動　滑鼠 瞄準　空白鍵 打暈',
-  'E 互動：採集、拾取、入庫、備料、放鍋',
-  '　　　　取餐、交餐、翻敵鍋、扶正自家鍋',
-  '1～5 在備料台選料理、在工具架選工具',
+  'E 互動：攻擊怪物、拾取、入庫、備料、放鍋',
+  '　　　　取餐、交餐、關敵方外壁鍋的火、開火',
+  '1～5 在備料台選料理（也可以直接點選單）',
   'Q 放下手上物品　R 收進背包（1 秒前搖）',
   'Tab 開關背包，拖到框外丟棄',
   'V 觀戰　Z 全圖／跟隨　滾輪 縮放',
@@ -567,7 +570,7 @@ function drawOverlay() {
     block([
       { t: '烹飪搜打撤', size: 40, title: true, gap: 50 },
       { t: '你操作藍隊的「你」，隊友與敵方都是 NPC。', size: 15, color: '#ccc', gap: 22, opt: true },
-      { t: '六分鐘內規劃訂單，防範對方翻鍋與打暈。', size: 15, color: '#ccc', gap: 28, opt: true },
+      { t: '六分鐘內規劃訂單，防範對方關火與打暈。', size: 15, color: '#ccc', gap: 28, opt: true },
       ...HELP.map(t => ({ t, size: 15, gap: 19, opt: true })),
       { t: '點擊螢幕開始遊戲', size: 22, bold: true, color: '#ffd27a', blink: true, gap: 38 },
       { t: '教學關卡', size: 16, button: true, gap: 40 },
@@ -579,7 +582,7 @@ function drawOverlay() {
     block([
       { t: msg, size: 40, bold: true, color: G.winner === 0 ? a.color : (G.winner === 1 ? b.color : '#fff'), gap: 48 },
       { t: '我方 ' + a.score + '　：　' + b.score + ' 敵方', size: 26, bold: true, gap: 36 },
-      { t: '共 ' + G.round + ' 輪' + (a.score === b.score && a.score > 0 ? '（同分：較早完成最後一次得分者勝）' : ''), size: 15, color: '#ccc', gap: 30 },
+      { t: '我方完成 ' + a.round + ' 輪、敵方完成 ' + b.round + ' 輪' + (a.score === b.score && a.score > 0 ? '（同分：較早完成最後一次得分者勝）' : ''), size: 15, color: '#ccc', gap: 30 },
       { t: '點擊螢幕再玩一局', size: 22, bold: true, color: '#ffd27a', blink: true, gap: 38 },
       { t: '教學關卡', size: 16, button: true, gap: 40 },
       { t: '鍵盤：Enter 再玩　T 教學　V 觀戰', size: 12, color: '#999', gap: 18 },

@@ -25,8 +25,8 @@ function buildMap() {
   G.walls = []; G.stations = []; G.nodes = []; G.items = []; G.teams = [];
   G.waters = [rect(0, 0, W, 60), rect(0, H - 60, W, 60)];
   const sideWalls = [
-    rect(40, 400, 540, 24), rect(40, 1076, 540, 24), rect(40, 400, 24, 700),       // 廚房上、下、左牆
-    rect(556, 400, 24, 140), rect(556, 640, 24, 220), rect(556, 960, 24, 140),      // 右牆，兩個門
+    rect(40, 400, 540, 24), rect(40, 1076, 540, 24), rect(40, 400, 24, 700),       // 廚房上、下、左牆（上牆有外壁鍋）
+    rect(556, 400, 24, 60), rect(556, 700, 24, 100), rect(556, 1040, 24, 60),       // 右側半開放：只有幾段短牆
     rect(820, 250, 240, 170), rect(820, 1080, 240, 170),                            // 岩石
     rect(480, 140, 860, 26), rect(480, H - 166, 860, 26),                           // 水邊懸崖：魚類點只能從西側窄道進入
   ];
@@ -42,53 +42,63 @@ function buildMap() {
       G.stations.push(s); return s;
     };
     const tm = { id: t, ...TEAM_CFG[t], score: 0, lastScoreAt: Infinity, nextFlipCheck: 20, travel: {} };
-    // 廚房依動線排列：上門 → 倉庫 → 備料台 → 爐台（旁邊手套架）→ 下門出餐口
+    // 廚房依動線排列：倉庫 → 備料台 → 爐台（旁邊手套架）→ 出餐口。
+    // 兩口內爐在廚房深處，敵人碰不到；上牆有一口外壁鍋和就地鍋，可從廚房內使用，也會被廚房外的敵人關火。
     tm.storage = st('storage', 440, 590, { items: [] });
     tm.preps = [st('prep', 300, 560, { recipe: null, progress: 0, done: false }), st('prep', 300, 680, { recipe: null, progress: 0, done: false })];
-    tm.stoves = [st('stove', 300, 830, cookState()), st('stove', 420, 830, cookState())];
-    tm.quick = st('stove', 660, 500, { ...cookState(), quick: true, raw: false, prepP: 0 });
+    tm.stoves = [st('stove', 300, 830, cookState()), st('stove', 420, 830, cookState()), st('stove', 420, 412, { ...cookState(), wall: true })];
+    tm.quick = st('stove', 170, 412, { ...cookState(), quick: true, wall: true, raw: false, prepP: 0 });
     tm.pass = st('pass', 480, 950);
-    tm.toolRack = st('tool', 480, 465);
     tm.gloveRack = st('glove', 180, 830);
     tm.guard = P(t, 360, 760);
     tm.spawn = [P(t, 180, 640), P(t, 180, 740)];
     tm.floor = t === 0 ? rect(64, 424, 492, 652) : mirrorRect(rect(64, 424, 492, 652));
+    // 敵方不可進入的範圍：整個廚房（含牆與右側開口）
+    tm.zone = t === 0 ? rect(40, 400, 544, 700) : mirrorRect(rect(40, 400, 544, 700));
     G.teams.push(tm);
 
+    // 食材怪物：雙方共用，不分哪一邊；位置左右對稱只是為了公平
     const node = (type, x, y, extra = {}) => {
       const p = P(t, x, y);
-      G.nodes.push({ id: G.nodes.length, type, x: p.x, y: p.y, hp: CFG.NODE_HP, respawn: 0, res: null, side: t, ...extra });
+      G.nodes.push({ id: G.nodes.length, type, x: p.x, y: p.y, hp: CFG.MONSTER_HP, respawn: 0, res: null, side: t, lastHit: -1, ...extra });
     };
     node('veg', 740, 460, { home: true }); node('veg', 760, 1130);
     node('mush', 1220, 470); node('mush', 1220, 1030);
     node('fish', 1300, 100); node('fish', 1300, 1400);
   }
-  for (const y of [640, 750, 860]) G.nodes.push({ id: G.nodes.length, type: 'shell', x: 1350, y, hp: CFG.NODE_HP, respawn: 0, res: null, side: -1 });
+  for (const y of [640, 750, 860]) G.nodes.push({ id: G.nodes.length, type: 'shell', x: 1350, y, hp: CFG.MONSTER_HP, respawn: 0, res: null, side: -1, lastHit: -1 });
   buildGrid();
   buildSegs();
 }
 
 // ---------------------------------------------------------------- 路徑格
 const CELL = 20, GW = Math.ceil(W / CELL), GH = Math.ceil(H / CELL);
-let grid = new Uint8Array(GW * GH);
+let grid = new Uint8Array(GW * GH);          // 共用：只有牆與水
+let teamGrids = [grid, grid];                // 每隊：再加上對方的廚房（不能進入）
 
-function buildGrid() {
-  grid = new Uint8Array(GW * GH);
+function makeGrid(extra) {
+  const g = new Uint8Array(GW * GH);
   const pad = CFG.R + 3;
+  const rects = G.solids.concat(extra);
   for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
     const x = gx * CELL + CELL / 2, y = gy * CELL + CELL / 2;
     let b = x < pad || y < pad || x > W - pad || y > H - pad;
-    if (!b) for (const r of G.solids) {
+    if (!b) for (const r of rects) {
       if (x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad) { b = true; break; }
     }
-    grid[gy * GW + gx] = b ? 1 : 0;
+    g[gy * GW + gx] = b ? 1 : 0;
   }
+  return g;
+}
+function buildGrid() {
+  grid = makeGrid([]);
+  teamGrids = [makeGrid([G.teams[1].zone]), makeGrid([G.teams[0].zone])];
 }
 
 const cellOf = (x, y) => [clamp(Math.floor(x / CELL), 0, GW - 1), clamp(Math.floor(y / CELL), 0, GH - 1)];
-const blockedAt = (x, y) => { const [cx, cy] = cellOf(x, y); return grid[cy * GW + cx] === 1; };
+const blockedAt = (x, y, g = grid) => { const [cx, cy] = cellOf(x, y); return g[cy * GW + cx] === 1; };
 
-function freeCellNear(cx, cy) {
+function freeCellNear(cx, cy, grid) {
   if (!grid[cy * GW + cx]) return [cx, cy];
   for (let r = 1; r < 20; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
     const x = cx + dx, y = cy + dy;
@@ -97,7 +107,7 @@ function freeCellNear(cx, cy) {
   return [cx, cy];
 }
 
-function astar(ax, ay, bx, by) {
+function astar(ax, ay, bx, by, grid) {
   const N = GW * GH, start = ay * GW + ax, goal = by * GW + bx;
   const g = new Float32Array(N).fill(1e9), came = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
   const hI = [], hF = [];
@@ -136,29 +146,31 @@ function astar(ax, ay, bx, by) {
   return cells.reverse();
 }
 
-function lineWalkable(a, b) {
+function lineWalkable(a, b, g = grid) {
   const d = Math.hypot(b.x - a.x, b.y - a.y), n = Math.ceil(d / 8);
   for (let i = 1; i <= n; i++) {
     const t = i / n, x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
     if (Math.hypot(x - a.x, y - a.y) < 16) continue;
-    if (blockedAt(x, y)) return false;
+    if (blockedAt(x, y, g)) return false;
   }
   return true;
 }
 
-function findPath(sx, sy, tx, ty) {
-  const [ax, ay] = freeCellNear(...cellOf(sx, sy));
-  const [bx, by] = freeCellNear(...cellOf(tx, ty));
-  const cells = astar(ax, ay, bx, by);
+// team：用該隊的路徑格（不會規劃穿過對方廚房）
+function findPath(sx, sy, tx, ty, team) {
+  const g = team === undefined ? grid : teamGrids[team];
+  const [ax, ay] = freeCellNear(...cellOf(sx, sy), g);
+  const [bx, by] = freeCellNear(...cellOf(tx, ty), g);
+  const cells = astar(ax, ay, bx, by, g);
   if (!cells) return null;
   const pts = [{ x: sx, y: sy }];
   for (const i of cells) pts.push({ x: (i % GW) * CELL + CELL / 2, y: ((i / GW) | 0) * CELL + CELL / 2 });
-  if (!blockedAt(tx, ty)) pts.push({ x: tx, y: ty });
+  if (!blockedAt(tx, ty, g)) pts.push({ x: tx, y: ty });
   const out = [pts[0]];
   let i = 0;
   while (i < pts.length - 1) {
     let j = pts.length - 1;
-    while (j > i + 1 && !lineWalkable(pts[i], pts[j])) j--;
+    while (j > i + 1 && !lineWalkable(pts[i], pts[j], g)) j--;
     out.push(pts[j]); i = j;
   }
   return out;
@@ -168,7 +180,8 @@ const pathLength = p => { let s = 0; for (let i = 1; i < p.length; i++) s += dis
 
 function moveChar(c, dx, dy) {
   c.x += dx; c.y += dy;
-  for (let k = 0; k < 2; k++) for (const r of G.solids) {
+  const blocks = c.team === undefined ? G.solids : G.solids.concat([G.teams[1 - c.team].zone]);   // 不能進入對方廚房
+  for (let k = 0; k < 2; k++) for (const r of blocks) {
     const nx = clamp(c.x, r.x, r.x + r.w), ny = clamp(c.y, r.y, r.y + r.h);
     const ddx = c.x - nx, ddy = c.y - ny, d2 = ddx * ddx + ddy * ddy;
     if (d2 >= CFG.R * CFG.R) continue;

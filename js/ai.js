@@ -12,7 +12,7 @@ function endJob(c, failed) {
 
 function followPath(c, tx, ty, dt) {
   if (!c.path || Math.hypot(c.pathGoal.x - tx, c.pathGoal.y - ty) > 24 || c.repath <= 0) {
-    c.path = findPath(c.x, c.y, tx, ty) || [{ x: c.x, y: c.y }, { x: tx, y: ty }];
+    c.path = findPath(c.x, c.y, tx, ty, c.team) || [{ x: c.x, y: c.y }, { x: tx, y: ty }];
     c.path.shift();
     c.pathGoal = { x: tx, y: ty }; c.repath = 3;
   }
@@ -74,7 +74,7 @@ function runJob(c, dt) {
       const e = s.target;
       s.el = (s.el || 0) + dt;
       if (s.started) { if (!c.action) j.i++; else return; continue; }
-      if (e.down > 0 || s.el > 7 || !canSee(c.team, e) || stunReady(c) !== true) { endJob(c, true); return; }
+      if (e.down > 0 || s.el > 7 || !canSee(c.team, e) || stunReady(c) !== true || nearOwnKitchen(e, 20)) { endJob(c, true); return; }
       if (dist(c, e) < CFG.STUN_RANGE * 0.8) {
         const r = startStun(c, Math.atan2(e.y - c.y, e.x - c.x));
         if (r !== true) { endJob(c, true); return; }
@@ -94,14 +94,22 @@ const wait = (until, timeout) => ({ t: 'wait', until, timeout });
 const reserve = (j, c, o) => { o.res = c.id; j.res.push(o); };
 
 const gloveSteps = on => c => (c.gloves === on ? null : [go(team(c).gloveRack), doAct(c => startGlove(c, on))]);
-const toolSteps = tool => c => (c.tool === tool ? null : [go(team(c).toolRack), doAct(c => startTool(c, tool))]);
+const toolSteps = () => () => null;   // 已移除工具：雙方攻擊力相同
+
+// 外壁鍋要分內外側：己方從廚房裡面走過去，敵方從牆外走過去
+// 角色是否在自己廚房裡或離廚房 m 像素內（對手不能進入那裡）
+function nearOwnKitchen(e, m) {
+  const z = G.teams[e.team].zone;
+  return e.x > z.x - m && e.x < z.x + z.w + m && e.y > z.y - m && e.y < z.y + z.h + m;
+}
+const acc = (c, s) => (s.wall ? { x: s.x, y: s.y + (s.team === c.team ? 32 : -32) } : s);
 
 // ---------------------------------------------------------------- 工作種類
 function pickNode(c, k) {
   let best = null, bs = 1e9;
   for (const n of G.nodes) {
-    if (n.type !== k || (n.res !== null && n.res !== c.id)) continue;
-    if (n.side === 1 - c.team && n.home) continue;   // 不去對方家門口的就地蔬菜點
+    // 只避開隊友鎖定的怪物；對手鎖定的照樣可以去搶最後一擊
+    if (n.type !== k || (n.res !== null && n.res !== c.id && G.chars[n.res].team === c.team)) continue;
     const s = dist(c, n) * 1.25 + (n.hp > 0 ? 0 : n.respawn * CFG.SPEED);
     if (s < bs) { bs = s; best = n; }
   }
@@ -156,7 +164,7 @@ function placeSemiSteps() {
     const s = team(c).stoves.find(s => stoveEmpty(s) && (s.res === null || s.res === c.id));
     if (!s) return [wait(c => team(c).stoves.some(s => stoveEmpty(s) && s.res === null), 30), step];
     reserve(j, c, s);
-    return [go(s, 38), doAct(c => startPlace(c, s))];
+    return [go(acc(c, s), 38), doAct(c => startPlace(c, s))];
   };
   return [step];
 }
@@ -174,7 +182,7 @@ function cookJob(c, p, rk) {
 function serveJob(c, s) {
   return job('serve', [
     gloveSteps(true),
-    go(s, 38),
+    go(acc(c, s), 38),
     doAct(c => startTakeDish(c, s)),
     c => go(team(c).pass, 38),
     doAct(c => startSubmit(c)),
@@ -183,7 +191,7 @@ function serveJob(c, s) {
 }
 
 function eatJob(c, s) {
-  return job('eat', [go(s, 38), doAct(c => startEat(c, s))]);
+  return job('eat', [go(acc(c, s), 38), doAct(c => startEat(c, s))]);
 }
 
 function cakeJob(c) {
@@ -194,28 +202,28 @@ function cakeJob(c) {
     go(n, 40), wait(() => n.hp > 0, 14),
     doAct(c => startGather(c, n)),
     doAct(c => startPick(c, c.lastGathered)),
-    go(q, 38), doAct(c => startQuickDeposit(c, q)), doAct(c => startQuickPrep(c, q)),
+    go(acc(c, q), 38), doAct(c => startQuickDeposit(c, q)), doAct(c => startQuickPrep(c, q)),
     wait(() => q.done, 15), doAct(c => startEat(c, q)),
   ], { recipe: 'cake' });
 }
 
-// 突襲：先埋伏在對方廚房門外，等對方的鍋開始烹調再進去翻
+// 突襲：先埋伏在對方廚房上方的牆外，等外壁鍋開始烹調再去關火（只有外壁鍋能關）
 function raidJob(c) {
   const et = G.teams[1 - c.team];
-  const lurk = P(1 - c.team, 680, 910);
+  const lurk = P(1 - c.team, 300, 340);
   const target = () => et.stoves.concat([et.quick]).find(s => flippable(s) && RECIPES[s.cooking].cook - s.progress > dist(c, s) / CFG.SPEED + 1.5);
   return job('raid', [
     c => (c.hand ? 'fail' : null),
     go(lurk, 40),
     wait(() => !!target(), 12),
-    (c, j) => { const s = target(); return s ? [go(s, 40), doAct(c => startFlip(c, s))] : 'fail'; },
+    (c, j) => { const s = target(); return s ? [go(acc(c, s), 40), doAct(c => startFlip(c, s))] : 'fail'; },
   ], { interruptible: true });
 }
 function fixJob(c, s) {
-  return job('fix', [go(s, 40), doAct(c => startFix(c, s))]);
+  return job('fix', [go(acc(c, s), 40), doAct(c => startFix(c, s))]);
 }
 function defendJob(c, s) {
-  return job('defend', [go(s, CFG.GUARD_RANGE - 20), wait(() => !s.beingFlipped, 3)], { interruptible: false });
+  return job('defend', [go(acc(c, s), 24), wait(() => !s.beingFlipped, 3)], { interruptible: false });
 }
 function guardJob(c) {
   // 有打暈次數的人閒下來時，去中央己方側埋伏搬貨的對手；否則回家看鍋
@@ -230,27 +238,27 @@ function lootJob(c, it) {
   return job('loot', [go(it, 30), doAct(c => startPick(c, it))], { interruptible: false });
 }
 function clearStoveJob(c, s) {
-  return job('clear', [gloveSteps(true), go(s, 38), doAct(c => startTakeDish(c, s)), doAct(c => dropHand(c))]);
+  return job('clear', [gloveSteps(true), go(acc(c, s), 38), doAct(c => startTakeDish(c, s)), doAct(c => dropHand(c))]);
 }
 
 // 手上或背包有東西時，先處理掉
 function cleanupJob(c) {
   const tm = team(c), h = c.hand;
   if (h && h.kind === 'dish') {
-    if (G.orders.some(o => o.doneBy < 0 && o.key === h.key)) return job('submit', [go(tm.pass, 38), doAct(c => startSubmit(c))]);
+    if (openOrders(c.team).includes(h.key)) return job('submit', [go(tm.pass, 38), doAct(c => startSubmit(c))]);
     const s = tm.stoves.find(s => stoveEmpty(s) && s.res === null);
-    if (s && c.gloves) return job('store', [go(s, 38), doAct(c => startPlace(c, s))]);
+    if (s && c.gloves) return job('store', [go(acc(c, s), 38), doAct(c => startPlace(c, s))]);
     return null;
   }
   if (h && h.kind === 'semi') {
     // 兩口爐都被沒人要的成品占住：先把半成品放腳邊，清掉舊成品，再撿回來放鍋（避免卡死）
     const stale = !tm.stoves.some(stoveEmpty) && tm.stoves.find(s => s.done && !RECIPES[s.cooking].ability
-      && !G.orders.some(o => o.doneBy < 0 && o.key === s.cooking) && (s.res === null || s.res === c.id));
+      && !openOrders(c.team).includes(s.cooking) && (s.res === null || s.res === c.id));
     if (stale) {
       const semi = h;
       const j = job('swap', [
-        doAct(c => dropHand(c)), gloveSteps(true), go(stale, 38), doAct(c => startTakeDish(c, stale)), doAct(c => dropHand(c)),
-        go(semi, 30), doAct(c => startPick(c, semi)), go(stale, 38), doAct(c => startPlace(c, stale)),
+        doAct(c => dropHand(c)), gloveSteps(true), go(acc(c, stale), 38), doAct(c => startTakeDish(c, stale)), doAct(c => dropHand(c)),
+        go(semi, 30), doAct(c => startPick(c, semi)), go(acc(c, stale), 38), doAct(c => startPlace(c, stale)),
       ]);
       reserve(j, c, stale);
       return j;
@@ -291,13 +299,13 @@ function wantSoup(t, S) {
 }
 
 function targets(t, S) {
-  const enemy = activeRecipes(1 - t);
+  // 自己隊伍這一輪還沒交的訂單；雙方進度分開，不必考慮對手在做什麼
   const pool = S.storage.concat(S.transit);
-  const list = G.orders.filter(o => o.doneBy < 0 && !S.active.has(o.key)).map(o => {
+  const list = teamOrders(t).filter(o => !o.done && !S.active.has(o.key)).map(o => {
     const p = pool.slice();
     let est = RECIPES[o.key].ings.length * CFG.PREP_PER_ING + 6;
     for (const k of RECIPES[o.key].ings) { const i = p.indexOf(k); if (i >= 0) p.splice(i, 1); else est += S.tm.travel[k] * 2 + 3; }
-    return { key: o.key, val: o.score / est * (enemy.has(o.key) ? 0.55 : 1) };
+    return { key: o.key, val: o.score / est };
   }).sort((a, b) => b.val - a.val).map(x => x.key);
   if (wantSoup(t, S)) list.unshift('soup');
   return list;
@@ -318,7 +326,7 @@ function needs(S, tlist) {
 function planFor(c) {
   const t = c.team, S = teamSnapshot(t), tm = S.tm;
   const free = o => o.res === null || o.res === c.id;
-  const open = k => G.orders.some(o => o.doneBy < 0 && o.key === k);
+  const open = k => openOrders(t).includes(k);
 
   const cl = cleanupJob(c);
   if (cl) return cl;
@@ -349,7 +357,7 @@ function planFor(c) {
   if (!c.hand) {
     const f = tm.floor;
     const room = tm.storage.items.length < CFG.STORAGE_CAP;
-    const lost = G.items.find(i => (i.kind === 'semi' || (i.kind === 'raw' && room)) && i.res === null && i.x > f.x - 60 && i.x < f.x + f.w + 60 && i.y > f.y && i.y < f.y + f.h);
+    const lost = G.items.find(i => i.team === t && (i.kind === 'semi' || (i.kind === 'raw' && room)) && i.res === null && i.x > f.x - 60 && i.x < f.x + f.w + 60 && i.y > f.y && i.y < f.y + f.h);
     if (lost) { const j = lootJob(c, lost); reserve(j, c, lost); return j; }
   }
 
@@ -399,7 +407,7 @@ function planFor(c) {
 function reactFor(c) {
   if (c.down > 0) return;
   const tm = team(c);
-  const interruptible = !c.job || c.job.interruptible && !(c.job.type === 'gather' && c.hand) && !(c.action && c.action.label === '翻鍋');
+  const interruptible = !c.job || c.job.interruptible && !(c.job.type === 'gather' && c.hand) && !(c.action && c.action.label === '關火');
 
   // 自家鍋被翻 → 最近的人回防
   for (const s of tm.stoves.concat([tm.quick])) {
@@ -414,11 +422,14 @@ function reactFor(c) {
     let best = null, bv = 0;
     for (const e of G.chars) {
       if (e.team === c.team || e.down > 0 || e.immune > 0) continue;
+      if (nearOwnKitchen(e, 90)) continue;   // 對手在自己廚房裡或門口，進不去也追不到
       const d = dist(c, e);
       if (d > 320 || !canSee(c.team, e)) continue;
       let v = 0;
-      if (e.action && e.action.label === '翻鍋') v = 5;
+      if (e.action && e.action.label === '關火') v = 5;
       else if (c.job && c.job.type === 'raid' && e.job && e.job.type === 'defend') v = 3;
+      // 搶最後一擊：對手正在攻擊食材怪物時打暈他，他就搶不到這份食材
+      else if (e.action && e.action.label === '攻擊') v = 3;
       else if (carried(e).some(it => it.kind !== 'raw')) v = 4;
       else if (carried(e).length) v = 1 + tm.aggr;
       v -= d / 400;
@@ -429,7 +440,7 @@ function reactFor(c) {
 
   // 剛打暈對手：撿走對方掉的原料或半成品
   if (!c.hand && !c.gloves && c.lastHit && G.time - c.lastHit < 3 && (!c.job || c.job.type !== 'loot')) {
-    const it = G.items.filter(i => i.kind !== 'dish' && dist(i, c) < 160 && i.res === null).sort((a, b) => dist(a, c) - dist(b, c))[0];
+    const it = G.items.filter(i => i.team === c.team && i.kind !== 'dish' && dist(i, c) < 160 && i.res === null).sort((a, b) => dist(a, c) - dist(b, c))[0];
     if (it) { endJob(c); const j = lootJob(c, it); reserve(j, c, it); c.job = j; c.lastHit = 0; }
   }
 }

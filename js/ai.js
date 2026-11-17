@@ -206,9 +206,19 @@ function cakeJob(c) {
 }
 
 // 突襲：先埋伏在對方廚房牆外、兩口火爐中間，等火爐開始烹調再去關火
+// 草叢埋伏點：草叢中心（草叢不擋路，中心一定走得到）
+const bushCenter = b => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+function nearestBush(p, maxD) {
+  let best = null, bd = maxD;
+  for (const b of G.bushes || []) { const q = bushCenter(b), d = dist(p, q); if (d < bd) { bd = d; best = q; } }
+  return best;
+}
+
 function raidJob(c) {
   const et = G.teams[1 - c.team];
-  const lurk = P(1 - c.team, 740, 600);
+  // 優先躲在對方廚房附近的草叢裡等，沒有就貼在牆外
+  const wall = P(1 - c.team, 740, 600);
+  const lurk = nearestBush(wall, 420) || wall;
   const target = () => et.stoves.concat([et.quick]).find(s => flippable(s) && RECIPES[s.cooking].cook - s.progress > dist(c, s) / CFG.SPEED + 1.5);
   return job('raid', [
     c => (c.hand ? 'fail' : null),
@@ -224,8 +234,13 @@ function defendJob(c, s) {
   return job('defend', [go(acc(c, s), 24), wait(() => !s.beingFlipped, 3)], { interruptible: false });
 }
 function guardJob(c) {
-  // 有打暈次數的人閒下來時，去中央己方側埋伏搬貨的對手；否則回家看鍋
+  // 有打暈次數的人閒下來時，躲進怪物附近的草叢埋伏搬貨或打怪的對手；沒有草叢就站在怪物旁
   if (c.stunOK && c.charges > 0 && !c.hand && Math.random() < 0.3 + team(c).aggr) {
+    const spots = (G.bushes || []).map(bushCenter).filter(q => G.nodes.some(n => dist(n, q) < 320));
+    if (spots.length) {
+      const q = spots[Math.floor(Math.random() * spots.length)];
+      return job('ambush', [go(q, 20), wait(() => false, 6)], { interruptible: true, idleJob: true });
+    }
     const ns = G.nodes.filter(n => n.side === c.team), n = ns[Math.floor(Math.random() * ns.length)];
     return job('guard', [go(n, 70), wait(() => false, 4)], { interruptible: true, idleJob: true });
   }
@@ -457,7 +472,7 @@ function updateAI(dt) {
       if (!c.job || c.job.idleJob && c.job.i >= 1 && c.job.steps[c.job.i] && c.job.steps[c.job.i].t === 'wait') {
         const prev = c.job;
         const j = planFor(c);
-        if (!prev || j.type !== 'guard') { endJob(c); c.job = j; }
+        if (!prev || !j.idleJob) { endJob(c); c.job = j; }   // 閒置等待中只被真正的工作取代
       }
     }
     runJob(c, dt);

@@ -173,7 +173,15 @@ function drawCrateArt(c, x, y, w, h, tc) {
   for (const [px, py] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { c.beginPath(); c.arc(px * (w / 2 - 5), py * (h / 2 - 5), 1.8, 0, Math.PI * 2); c.fillStyle = '#2a1a0c'; c.fill(); }
   c.restore();
 }
-// 備料台：砧板＋菜刀
+// 桌面：淺色木頭檯面（放原料用）
+function drawTableArt(c, x, y, w, h, tc) {
+  c.save(); c.translate(x, y);
+  rrect(c, -w / 2, -h / 2, w, h, 5); fillStroke(c, '#c49a63', tc, 3);
+  c.lineWidth = 1.2; c.strokeStyle = 'rgba(90,55,20,.35)';
+  for (let i = 1; i < 4; i++) { const yy = -h / 2 + i * h / 4; c.beginPath(); c.moveTo(-w / 2 + 4, yy); c.lineTo(w / 2 - 4, yy); c.stroke(); }
+  c.restore();
+}
+// 砧板：砧板＋菜刀
 function drawPrepArt(c, x, y, w, h, tc) {
   c.save(); c.translate(x, y);
   rrect(c, -w / 2, -h / 2, w, h, 6); fillStroke(c, '#e2b878', tc, 3);

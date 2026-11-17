@@ -3,6 +3,10 @@
 
 const keys = new Set();
 
+// 數字選單：拿回砧板／桌面上的某一種原料、或放上背包裡的某一種原料
+const rawMenu = (c, s, from) => [...new Set(s.items)].map((k, i) => ({ key: String(from + i), label: '拿回' + ING[k].name, ok: !c.hand, run: () => startTakeOut(c, s, k) }));
+const bagMenu = (c, s, from) => c.bag.filter(x => x.kind === 'raw').map((x, i) => ({ key: String(from + i), label: '放上背包裡的' + ING[x.key].name, ok: true, run: () => startDeposit(c, s, x.key) }));
+
 function getContext(c) {
   if (c.down > 0) return { label: '倒地中…' };
   if (c.action) return { label: c.action.label + '中' + (c.action.lock ? '（移動會中斷）' : c.action.range ? '（可在範圍內移動）' : '') };
@@ -29,18 +33,26 @@ function getContext(c) {
       case 'pass':
         if (c.hand && c.hand.kind === 'dish') return { label: 'E 交餐', btn: '交餐', run: () => startSubmit(c) };
         break;
-      case 'prep':
+      case 'prep': {
+        // 砧板：原料要放在同一個砧板上，剛好組成一道料理才能備料（使用者指定）
         if (s.done) return { label: 'E 取半成品', btn: '取半成品', run: () => startTakeSemi(c, s) };
-        if (s.recipe) return { label: 'E 繼續備料 ' + RECIPES[s.recipe].name, btn: '備料', run: () => startPrep(c, s, s.recipe) };
-        if (!c.hand) return {
-          label: '按數字選料理開始備料（倉庫 ' + tm.storage.items.map(k => ING[k].ch).join('') + (bagRaw(c) ? '＋背包 ' + c.bag.filter(i => i.kind === 'raw').map(i => ING[i.key].ch).join('') : '') + '）',
-          menu: PREP_MENU.map((k, i) => ({ key: String(i + 1), label: RECIPES[k].name + '（' + RECIPES[k].ings.map(x => ING[x].ch).join('＋') + '）', ok: hasAll(prepPool(c), RECIPES[k].ings), run: () => startPrep(c, s, k) })),
-        };
+        if (s.recipe) return { label: 'E 繼續備料 ' + RECIPES[s.recipe].name, btn: '備料', run: () => startPrep(c, s) };
+        const on = s.items.map(k => ING[k].ch).join('＋') || '空';
+        if (c.hand && c.hand.kind === 'raw') return { label: 'E 放上砧板（砧板：' + on + '）', btn: '放上', run: () => startDeposit(c, s) };
+        const rk = recipeOn(s), back = rawMenu(c, s, 2);
+        if (!c.hand && rk) return { label: 'E 開始備料：' + RECIPES[rk].name + '（' + on + '）', btn: '備料', run: () => startPrep(c, s), menu: [{ key: '1', label: '開始備料 ' + RECIPES[rk].name, ok: true, run: () => startPrep(c, s) }, ...back] };
+        if (!c.hand && bagRaw(c) && s.items.length < CFG.BOARD_CAP) return { label: 'E 從背包放上砧板（砧板：' + on + '）', btn: '放上', run: () => startDeposit(c, s), menu: bagMenu(c, s, 1).concat(back.map((m, i) => ({ ...m, key: String(i + 1 + c.bag.filter(x => x.kind === 'raw').length) }))) };
+        if (!c.hand && s.items.length) return { label: 'E 拿回原料（砧板：' + on + '，組不成料理）', btn: '拿回', run: () => startTakeOut(c, s) };
+        return { label: '砧板：放上一道料理需要的原料（例：菜＋菇＝雙蔬煎盤）' };
+      }
+      case 'table': {
+        const on = s.items.map(k => ING[k].ch).join('＋') || '空';
+        if (c.hand && c.hand.kind === 'raw') return { label: 'E 放上桌面（' + s.items.length + '/' + CFG.TABLE_CAP + '）', btn: '放上', run: () => startDeposit(c, s) };
+        if (!c.hand && bagRaw(c) && s.items.length < CFG.TABLE_CAP) return { label: 'E 從背包放上桌面（' + s.items.length + '/' + CFG.TABLE_CAP + '）', btn: '放上', run: () => startDeposit(c, s) };
+        if (!c.hand && s.items.length) return { label: 'E 拿起原料（桌面：' + on + '）', btn: '拿起', run: () => startTakeOut(c, s), menu: rawMenu(c, s, 1) };
+        if (s.items.length) return { label: '桌面：' + on };
         break;
-      case 'storage':
-        if ((c.hand && c.hand.kind === 'raw') || (!c.hand && bagRaw(c))) return { label: 'E 入庫（' + s.items.length + '/' + CFG.STORAGE_CAP + '）', btn: '入庫', run: () => startDeposit(c) };
-        if (!c.hand && s.items.length) return { label: 'E 取出一份原料', btn: '取出', run: () => startTakeOut(c) };
-        break;
+      }
       case 'tool':
         return { label: '按數字換工具（目前 ' + TOOLS[c.tool] + '）', menu: TOOL_KEYS.map((k, i) => ({ key: String(i + 1), label: TOOLS[k] + '（剋制' + Object.values(ING).filter(g => g.tool === k).map(g => g.name).join('、') + '）', ok: c.tool !== k, run: () => startTool(c, k) })) };
     }
@@ -157,7 +169,7 @@ function interactButton(c) {
   if (c.action) return { label: c.action.label.slice(0, 4), on: false };
   const cx = getContext(c);
   if (cx && cx.run) return { label: cx.btn || '互動', on: true, run: () => playerKey('KeyE') };
-  if (cx && cx.menu) return { label: '點選單', on: false };
+  if (cx && cx.menu && !cx.run) return { label: '點選單', on: false };
   return { label: '互動', on: false };
 }
 

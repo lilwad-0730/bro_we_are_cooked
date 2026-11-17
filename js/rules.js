@@ -117,8 +117,15 @@ const bagFull = c => c.bag.length >= CFG.BAG_SLOTS;
 const bagFree = c => (c.hasBag ? CFG.BAG_SLOTS - c.bag.length : 0);
 const bagRaw = c => c.bag.find(i => i.kind === 'raw');
 const carried = c => (c.hand ? [c.hand] : []).concat(c.bag);
-// 備料時可用的原料：自家倉庫＋自己背包裡的原料
-const prepPool = c => team(c).storage.items.concat(c.bag.filter(i => i.kind === 'raw').map(i => i.key));
+// 桌面與砧板上的原料（使用者指定：倉庫改成兩個桌面、備料區改成砧板，料理的原料要放在同一個砧板上才能備料）
+const capOf = s => (s.type === 'table' ? CFG.TABLE_CAP : CFG.BOARD_CAP);
+const holdsRaw = s => s.type === 'table' || (s.type === 'prep' && !s.recipe && !s.done);
+const roomOn = s => holdsRaw(s) && s.items.length < capOf(s);
+const sameSet = (a, b) => a.length === b.length && hasAll(a, b);
+// 砧板上的原料剛好組成哪一道料理（收納蔬餅只能在就地鍋做，不算）
+const recipeOn = p => PREP_MENU.find(k => sameSet(p.items, RECIPES[k].ings)) || null;
+// 隊伍廚房裡現有的原料（桌面＋還沒開始備料的砧板）
+const kitchenRaw = t => { const tm = G.teams[t]; return tm.tables.concat(tm.preps.filter(holdsRaw)).flatMap(s => s.items); };
 
 function startStoreBag(c, it) {
   if (busy(c)) return '動作中';
@@ -148,28 +155,37 @@ function dropBag(c, it) {
   placeOnGround(c.bag.splice(i, 1)[0], c.x, c.y); return true;
 }
 
-function startDeposit(c) {
-  const s = team(c).storage;
+// 放原料：手上的原料優先，手空著就放背包裡的（可指定哪一種）
+function startDeposit(c, s, key) {
   if (busy(c)) return '動作中';
-  if (!near(c, s)) return '離倉庫太遠';
-  const fromHand = c.hand && c.hand.kind === 'raw';
-  const fromBag = !fromHand && bagRaw(c);
-  if (!fromHand && !fromBag) return '沒有原料可以入庫';
-  if (s.items.length >= CFG.STORAGE_CAP) return '倉庫已滿（最多三份原料）';
+  if (!s || s.team !== c.team) return '不是自家的桌面或砧板';
+  const name = s.type === 'table' ? '桌面' : '砧板';
+  if (!near(c, s)) return '離' + name + '太遠';
+  if (!holdsRaw(s)) return '砧板正在備料，先把半成品拿走';
+  const fromHand = c.hand && c.hand.kind === 'raw' && (!key || c.hand.key === key);
+  const fromBag = !fromHand && !c.hand && c.bag.find(i => i.kind === 'raw' && (!key || i.key === key));
+  if (!fromHand && !fromBag) return '沒有原料可以放';
+  if (s.items.length >= capOf(s)) return name + '已滿（最多 ' + capOf(s) + ' 份原料）';
   const it = fromHand ? c.hand : fromBag;
-  return act(c, '入庫', CFG.DEPOSIT, () => {
+  return act(c, '放上' + name, CFG.DEPOSIT, () => {
     if (fromHand) c.hand = null; else c.bag.splice(c.bag.indexOf(it), 1);
     s.items.push(it.key);
-  }, inRange(c, s, () => s.items.length < CFG.STORAGE_CAP && (fromHand ? c.hand === it : c.bag.includes(it))));
+  }, inRange(c, s, () => roomOn(s) && (fromHand ? c.hand === it : c.bag.includes(it))));
 }
 
-function startTakeOut(c) {
-  const s = team(c).storage;
+// 從桌面或砧板拿回一份原料（可指定哪一種，否則拿最後放上去的）
+function startTakeOut(c, s, key) {
   if (busy(c)) return '動作中';
+  if (!s || s.team !== c.team || !holdsRaw(s)) return '這裡沒有可拿的原料';
   if (c.hand) return '雙手只能拿一件';
-  if (!s.items.length) return '倉庫是空的';
-  if (!near(c, s)) return '離倉庫太遠';
-  return act(c, '取出原料', CFG.TAKE, () => { const k = s.items.pop(); if (k) c.hand = { id: ++G.itemSeq, kind: 'raw', key: k, team: c.team, life: CFG.GROUND_LIFE }; }, inRange(c, s, () => !c.hand && s.items.length > 0));
+  const i = key ? s.items.lastIndexOf(key) : s.items.length - 1;
+  if (i < 0) return '這裡沒有' + (key ? ING[key].name : '原料');
+  if (!near(c, s)) return '太遠';
+  const k = s.items[i];
+  return act(c, '拿起原料', CFG.TAKE, () => {
+    const j = s.items.lastIndexOf(k);
+    if (j >= 0) { s.items.splice(j, 1); c.hand = { id: ++G.itemSeq, kind: 'raw', key: k, team: c.team, life: CFG.GROUND_LIFE }; }
+  }, inRange(c, s, () => !c.hand && s.items.includes(k)));
 }
 
 const hasAll = (pool, ings) => { const p = pool.slice(); for (const k of ings) { const i = p.indexOf(k); if (i < 0) return false; p.splice(i, 1); } return true; };
@@ -182,25 +198,19 @@ function activeRecipes(t) {
   return set;
 }
 
-function startPrep(c, p, rk) {
+// 備料：砧板上的原料剛好組成一道料理才能開始（使用者指定）
+function startPrep(c, p) {
   if (busy(c)) return '動作中';
-  if (p.team !== c.team) return '不能用對方的備料台';
-  if (!near(c, p)) return '離備料台太遠';
+  if (p.team !== c.team) return '不能用對方的砧板';
+  if (!near(c, p)) return '離砧板太遠';
   if (c.hand) return '雙手要空著才能備料';
   if (p.done) return '先把半成品拿走';
-  const r = RECIPES[rk];
   if (!p.recipe) {
-    if (r.quick) return '收納蔬餅要在就地鍋做';
-    if (!r.ability && activeRecipes(c.team).has(rk)) return '同隊不能同時做同一道菜';
-    const s = team(c).storage;
-    if (!hasAll(prepPool(c), r.ings)) return '原料不足（倉庫＋自己背包）：需要 ' + r.ings.map(k => ING[k].name).join('＋');
-    // 使用者指定：備料台可以直接用備料者自己背包裡的原料；先扣背包，倉庫留給隊友
-    for (const k of r.ings) {
-      const bi = c.bag.findIndex(i => i.kind === 'raw' && i.key === k);
-      if (bi >= 0) c.bag.splice(bi, 1); else s.items.splice(s.items.indexOf(k), 1);
-    }
-    p.recipe = rk; p.progress = 0;
-  } else if (p.recipe !== rk) return '這張備料台正在做' + RECIPES[p.recipe].name;
+    const rk = recipeOn(p);
+    if (!rk) return p.items.length ? '砧板上的原料組不成料理' : '砧板是空的，先放原料';
+    if (!RECIPES[rk].ability && activeRecipes(c.team).has(rk)) return '同隊不能同時做同一道菜';
+    p.recipe = rk; p.progress = 0; p.items = [];
+  }
   const need = RECIPES[p.recipe].ings.length * CFG.PREP_PER_ING;
   p.user = c.id;
   return act(c, '備料', need, () => { p.done = true; p.user = null; }, {
@@ -479,7 +489,7 @@ function measureRoutes() {
       let best = 1e9;
       for (const n of G.nodes) {
         if (n.type !== k) continue;
-        const p = findPath(tm.storage.x, tm.storage.y, n.x, n.y, tm.id);
+        const p = findPath(tm.tables[0].x, tm.tables[0].y, n.x, n.y, tm.id);
         if (p) best = Math.min(best, pathLength(p));
       }
       tm.travel[k] = best / CFG.SPEED;

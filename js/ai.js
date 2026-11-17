@@ -103,7 +103,7 @@ function nearOwnKitchen(e, m) {
   return e.x > z.x - m && e.x < z.x + z.w + m && e.y > z.y - m && e.y < z.y + z.h + m;
 }
 // tight：火爐的站位點要走到幾乎正好的位置，否則會停在互動距離外
-// 桌上的設施（倉庫、備料台）：走到桌子靠自己這一側的旁邊
+// 桌上的設施（桌面、砧板）：走到桌子靠自己這一側的旁邊
 const deskAcc = (c, s) => ({ x: s.x + (c.x < s.x ? -44 : 44), y: s.y, tight: true });   // 44＝貼著桌邊，保證在互動距離內
 const acc = (c, s) => (s.wall ? { x: s.x + s.out * (s.team === c.team ? -42 : 42), y: s.y, tight: true } : s);
 
@@ -142,24 +142,52 @@ function gatherJob(c, ings) {
   return job('gather', steps, { pending: ings.slice(), interruptible: true });
 }
 
-const storageRoom = c => team(c).storage.items.length < CFG.STORAGE_CAP;
-
-// 手上的原料：倉庫有位置就入庫；滿了先收進背包，背包也滿才在倉庫旁等
-function depositHandStep(c) {
-  if (!c.hand || c.hand.kind !== 'raw') return null;
-  if (storageRoom(c)) return [doAct(c => startDeposit(c))];
-  // 倉庫滿：背包有空格就收進背包（備料台可以直接用背包原料，不會晚到）；沒有空格才在倉庫旁等
-  if (bagFree(c) > 0) return [doAct(c => startStoreBag(c, 'hand'))];
-  return [wait(storageRoom, 12), doAct(c => startDeposit(c))];
+// 原料先放在桌面；桌面滿了才放到沒在用的砧板（使用者指定：倉庫改成兩個桌面）
+const byDist = c => (a, b) => dist(a, c) - dist(b, c);
+const kitchenCap = () => CFG.TABLE_CAP * 2;
+function depositTarget(c) {
+  const tm = team(c);
+  return tm.tables.filter(roomOn).sort(byDist(c))[0]
+    || tm.preps.filter(p => roomOn(p) && (p.res === null || p.res === c.id) && (p.user === null || p.user === undefined) && !recipeOn(p)).sort(byDist(c))[0] || null;
 }
-
-// 背包裡的原料：倉庫有位置就一份一份入庫，滿了就先留在背包
-function depositBagStep(c) {
-  return bagRaw(c) && storageRoom(c) ? [doAct(c => startDeposit(c)), depositBagStep] : null;
+function depositStep(c) {
+  const hasRaw = (c.hand && c.hand.kind === 'raw') || (!c.hand && bagRaw(c));
+  if (!hasRaw) return null;
+  const s = depositTarget(c);
+  if (!s) {
+    if (c.hand && bagFree(c) > 0) return [doAct(c => startStoreBag(c, 'hand')), depositStep];
+    return [wait(c => !!depositTarget(c), 12), depositStep];
+  }
+  return [go(s, 40), doAct(c => startDeposit(c, s)), depositStep];
 }
+function depositSteps() { return [depositStep]; }
 
-function depositSteps() {
-  return [c => go(team(c).storage, 40), depositHandStep, depositBagStep];
+// 把料理需要的原料湊到同一個砧板上（使用者指定：原料要放在同一個砧板上才能備料）
+// 每次執行都重新判斷下一步：放上手上的原料 → 移走不需要的 → 從背包、桌面、其他砧板拿缺的
+function assembleStep(p, rk) {
+  const step = (c, j) => {
+    if (p.recipe || p.done) return p.recipe === rk ? null : 'fail';
+    const need = RECIPES[rk].ings.slice(), extra = [];
+    for (const k of p.items) { const i = need.indexOf(k); if (i >= 0) need.splice(i, 1); else extra.push(k); }
+    const tm = team(c);
+    if (c.hand) {
+      if (c.hand.kind !== 'raw') return 'fail';
+      if (need.includes(c.hand.key) && !extra.length) return [go(p, 38), doAct(c => startDeposit(c, p)), step];
+      const tb = tm.tables.filter(roomOn).sort(byDist(c))[0];
+      if (tb) return [go(tb, 40), doAct(c => startDeposit(c, tb)), step];
+      if (bagFree(c) > 0) return [doAct(c => startStoreBag(c, 'hand')), step];
+      return [doAct(c => dropHand(c)), step];
+    }
+    if (extra.length) return [go(p, 38), doAct(c => startTakeOut(c, p, extra[0])), step];
+    if (!need.length) return null;
+    const k = need[0];
+    if (c.bag.some(i => i.kind === 'raw' && i.key === k)) return [go(p, 38), doAct(c => startDeposit(c, p, k)), step];
+    const src = tm.tables.filter(s => s.items.includes(k)).sort(byDist(c))[0]
+      || tm.preps.find(o => o !== p && holdsRaw(o) && o.items.includes(k) && (o.res === null || o.res === c.id) && (o.user === null || o.user === undefined));
+    if (!src) return 'fail';
+    return [go(src, 40), doAct(c => startTakeOut(c, src, k)), step];
+  };
+  return step;
 }
 
 function placeSemiSteps() {
@@ -174,9 +202,10 @@ function placeSemiSteps() {
 
 function cookJob(c, p, rk) {
   return job('cook', [
-    c => (c.hand ? 'fail' : null),
+    c => (c.hand && c.hand.kind !== 'raw' ? 'fail' : null),
+    assembleStep(p, rk),
     go(p, 38),
-    doAct(c => startPrep(c, p, rk)),
+    doAct(c => startPrep(c, p)),
     doAct(c => startTakeSemi(c, p)),
     ...placeSemiSteps(),
   ], { recipe: rk, res: [] });
@@ -198,7 +227,7 @@ function eatJob(c, s) {
 
 function cakeJob(c) {
   const tm = team(c), q = tm.quick;
-  const n = G.nodes.find(n => n.home && n.side === c.team);
+  const n = tm.homeVeg;
   return job('cake', [
     toolSteps('knife'),
     go(n, 40), wait(() => n.hp > 0, 14),
@@ -284,11 +313,11 @@ function cleanupJob(c) {
     return job('place', placeSemiSteps());
   }
   if (h && h.kind === 'raw') {
-    if (tm.storage.items.length < CFG.STORAGE_CAP) return job('deposit', depositSteps());
+    if (depositTarget(c)) return job('deposit', depositSteps());
     if (bagFree(c) > 0) return job('stash', [doAct(c => startStoreBag(c, 'hand'))]);
     return job('drop', [go(P(c.team, 760, 600), 30), doAct(c => dropHand(c))]);
   }
-  if (bagRaw(c) && tm.storage.items.length < CFG.STORAGE_CAP) return job('deposit', depositSteps());
+  if (bagRaw(c) && tm.tables.some(roomOn)) return job('deposit', depositSteps());
   const bagSemi = c.bag.find(i => i.kind === 'semi');
   if (bagSemi) return job('unbag', [doAct(c => dropBag(c, bagSemi))]);
   return null;
@@ -305,7 +334,7 @@ function teamSnapshot(t) {
   }
   const active = activeRecipes(t);
   for (const c of G.chars) if (c.team === t && c.job && c.job.recipe) active.add(c.job.recipe);
-  return { tm, storage: tm.storage.items.slice(), transit, active };
+  return { tm, storage: kitchenRaw(t), transit, active };
 }
 
 function wantSoup(t, S) {
@@ -330,8 +359,8 @@ function targets(t, S) {
 }
 
 function needs(S, tlist) {
-  // 倉庫上限只算已入庫的原料；隊員可以先把原料拿在手上或背包裡排隊（文件：手上與背包不算已卸貨）
-  const cap = CFG.STORAGE_CAP + CFG.AI_QUEUE - S.storage.length - S.transit.length;
+  // 廚房上限只算桌面與砧板上的原料；隊員可以先把原料拿在手上或背包裡排隊（文件：手上與背包不算已卸貨）
+  const cap = kitchenCap() + CFG.AI_QUEUE - S.storage.length - S.transit.length;
   if (cap <= 0) return [];
   const avail = S.storage.concat(S.transit), need = [];
   for (const rk of tlist.slice(0, 2)) for (const k of RECIPES[rk].ings) {
@@ -374,19 +403,30 @@ function planFor(c) {
   // 撿回掉在自家廚房附近的原料或半成品
   if (!c.hand) {
     const f = tm.floor;
-    const room = tm.storage.items.length < CFG.STORAGE_CAP;
+    const room = tm.tables.some(roomOn);
     const lost = G.items.find(i => i.team === t && (i.kind === 'semi' || (i.kind === 'raw' && room)) && i.res === null && i.x > f.x - 60 && i.x < f.x + f.w + 60 && i.y > f.y && i.y < f.y + f.h);
     if (lost) { const j = lootJob(c, lost); reserve(j, c, lost); return j; }
   }
 
   const tl = targets(t, S);
-  const prep = tm.preps.find(p => !p.recipe && !p.done && free(p));
-  if (prep && tm.stoves.some(s => stoveEmpty(s) || s.done)) {
-    const pool = prepPool(c);   // 倉庫＋自己背包
+  const boards = tm.preps.filter(p => !p.recipe && !p.done && free(p) && (p.user === null || p.user === undefined));
+  if (boards.length && tm.stoves.some(s => stoveEmpty(s) || s.done)) {
+    // 可用的原料：桌面、沒被隊友預約的砧板、自己身上
+    const pool = tm.tables.flatMap(s => s.items)
+      .concat(tm.preps.filter(o => holdsRaw(o) && free(o)).flatMap(o => o.items))
+      .concat(carried(c).filter(i => i.kind === 'raw').map(i => i.key));
     let rk = tl.find(k => hasAll(pool, RECIPES[k].ings));
-    if (!rk && S.storage.length >= CFG.STORAGE_CAP) rk = ORDER_KEYS.find(k => !S.active.has(k) && hasAll(pool, RECIPES[k].ings));
-    if (rk) { const j = cookJob(c, prep, rk); reserve(j, c, prep); return j; }
-    if (S.storage.length >= CFG.STORAGE_CAP && !c.hand) return job('trash', [go(tm.storage, 40), doAct(c => startTakeOut(c)), c => go(P(t, 760, 600), 30), doAct(c => dropHand(c))]);
+    if (!rk && S.storage.length >= kitchenCap()) rk = ORDER_KEYS.find(k => !S.active.has(k) && hasAll(pool, RECIPES[k].ings));
+    if (rk) {
+      // 選砧板：已經放著最多需要的原料、最少多餘原料的那一塊
+      const score = o => { const need = RECIPES[rk].ings.slice(); let hit = 0, extra = 0; for (const k of o.items) { const i = need.indexOf(k); if (i >= 0) { need.splice(i, 1); hit++; } else extra++; } return hit * 2 - extra; };
+      const p = boards.sort((a, b) => score(b) - score(a) || dist(a, c) - dist(b, c))[0];
+      const j = cookJob(c, p, rk); reserve(j, c, p); return j;
+    }
+    if (S.storage.length >= kitchenCap() && !c.hand) {
+      const tb = tm.tables.filter(s => s.items.length).sort(byDist(c))[0];
+      if (tb) return job('trash', [go(tb, 40), doAct(c => startTakeOut(c, tb)), c => go(P(t, 760, 600), 30), doAct(c => dropHand(c))]);
+    }
   }
 
   const remain = CFG.MATCH - G.time;

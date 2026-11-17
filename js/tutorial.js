@@ -4,9 +4,10 @@
 
 const tutC = () => player();
 const tutTeam = () => G.teams[0];
-const homeVeg = () => G.nodes.find(n => n.home && n.side === 0);
-const myMush = () => G.nodes.filter(n => n.type === 'mush' && n.side === 0 && n.hp > 0).sort((a, b) => dist(a, tutC()) - dist(b, tutC()))[0];
+const homeVeg = () => G.teams[0].homeVeg;
+const myMush = () => G.nodes.filter(n => n.type === 'mush' && n.hp > 0).sort((a, b) => dist(a, tutC()) - dist(b, tutC()))[0];
 const emptyStove = () => tutTeam().stoves.find(stoveEmpty);
+const tutBoard = () => tutTeam().preps.find(p => p.items.length && !p.recipe) || tutTeam().preps.find(p => !p.recipe && !p.done) || tutTeam().preps[0];
 const groundItem = (pred) => G.items.filter(pred).sort((a, b) => dist(a, tutC()) - dist(b, tutC()))[0];
 const enemyA = () => G.chars[2];
 const enemyB = () => G.chars[3];
@@ -30,17 +31,17 @@ const TUT_STEPS = [
   { title: '攻擊食材怪物', text: '靠近怪物、雙手空著按 E 攻擊，會一直打到牠的血條歸零；攻擊時可以在怪物周圍的黃色虛線圈內移動，走出圈外才會中斷。雙方攻擊力相同，打出最後一擊的人直接把食材拿在手上。雙手一次只能拿一件東西。',
     target: homeVeg,
     done: () => tutC().hand && tutC().hand.key === 'veg' },
-  { title: '入庫', text: '回到廚房，在倉庫旁按 E 把蔬菜放進倉庫。倉庫最多放三份原料。',
-    target: () => tutTeam().storage, done: () => tutTeam().storage.items.includes('veg') },
-  { title: '再拿一種原料', text: '左上角的「雙蔬煎盤」還需要菇類。到野區攻擊菇類怪物，打倒後菇類會直接到你手上，帶回倉庫入庫。',
+  { title: '放上砧板', text: '回到廚房，走到桌子上的砧板旁按 E，把蔬菜放上砧板。一道料理的原料都要放在同一塊砧板上才能備料；桌子中間的兩個桌面可以暫放原料（每個兩份）。',
+    target: () => tutBoard(), done: () => tutTeam().preps.some(p => p.items.includes('veg')) },
+  { title: '再拿一種原料', text: '左上角的「雙蔬煎盤」還需要菇類。到野區攻擊菇類怪物，打倒後菇類會直接到你手上，放到同一塊砧板上。',
     target: () => {
       const c = tutC();
-      if (c.hand && c.hand.key === 'mush') return tutTeam().storage;
+      if (c.hand && c.hand.key === 'mush') return tutBoard();
       return groundItem(i => i.key === 'mush') || myMush();
     },
-    done: () => hasAll(tutTeam().storage.items, ['veg', 'mush']) },
-  { title: '備料', text: '到備料台，按數字 1 選「雙蔬煎盤」。備料要 4 秒，期間可以在備料台周圍的黃色虛線圈內移動；走出圈外會中斷，但進度會保留。',
-    target: () => tutTeam().preps.find(p => p.recipe === 'vm') || tutTeam().preps[0],
+    done: () => tutTeam().preps.some(p => hasAll(p.items, ['veg', 'mush']) || p.recipe === 'vm') },
+  { title: '備料', text: '砧板上的菜＋菇剛好組成「雙蔬煎盤」，砧板下方會顯示料理名稱。雙手空著在砧板按 E 開始備料。備料要 4 秒，期間可以在砧板周圍的黃色虛線圈內移動；走出圈外會中斷，但進度會保留。',
+    target: () => tutTeam().preps.find(p => p.recipe === 'vm' || hasAll(p.items, ['veg', 'mush'])) || tutBoard(),
     done: () => tutTeam().preps.some(p => p.recipe === 'vm' && p.done) || activeRecipes(0).has('vm') && !tutTeam().preps.some(p => p.recipe === 'vm') },
   { title: '放鍋', text: '按 E 拿起半成品，搬到廚房牆上的火爐按 E 放鍋，之後會自動烹調。廚房只有這兩口火爐，鍋子從牆外碰得到，烹調時要留意對手來關火。',
     target: () => (tutC().hand && tutC().hand.kind === 'semi' ? emptyStove() : tutTeam().preps.find(p => p.recipe === 'vm')),
@@ -70,8 +71,8 @@ const TUT_STEPS = [
     setup: () => { G.tutorial.dragged = false; },
     target: () => (G.items.includes(G.tutorial.shell) ? G.tutorial.shell : null),
     done: () => G.tutorial.dragged && tutC().bag.some(i => i.key === 'shell') },
-  { title: '用背包裡的原料備料', text: '備料台可以直接使用你背包裡的原料，不必先入庫。到備料台按 5 做「力量燉湯」（需要硬殼）。',
-    target: () => tutTeam().preps.find(p => !p.recipe) || tutTeam().preps[0],
+  { title: '用背包裡的原料備料', text: '「力量燉湯」只要一份硬殼。到空的砧板旁，雙手空著按 E，會把背包裡的硬殼放上砧板；砧板顯示「→力量燉湯」後，再按 E 開始備料。',
+    target: () => tutTeam().preps.find(p => p.items.includes('shell')) || tutTeam().preps.find(p => !p.recipe && !p.done && !p.items.length) || tutTeam().preps[0],
     done: () => tutTeam().preps.some(p => p.recipe === 'soup') || activeRecipes(0).has('soup') || tutC().stunOK },
   { title: '吃力量燉湯', text: '把燉湯的半成品放到爐台，煮好後在鍋邊按 E 吃掉，就能打暈 3 次。',
     target: () => {

@@ -49,11 +49,12 @@ function pickSeed() {
 function buildMap(seed) {
   G.seed = seed === undefined ? pickSeed() : seed;
   const rng = mulberry32(G.seed);
-  for (let attempt = 0; attempt < 30; attempt++) if (tryBuild(rng)) return;
-  tryBuild(mulberry32(1));
+  for (let attempt = 0; attempt < 80; attempt++) if (tryBuild(rng)) return;
+  for (let attempt = 0; attempt < 30; attempt++) if (tryBuild(rng, false)) return;
+  tryBuild(mulberry32(1), false);
 }
 
-function tryBuild(rng) {
+function tryBuild(rng, fair = true) {
   G.walls = []; G.stations = []; G.nodes = []; G.items = []; G.teams = []; G.waters = [];
   // 場地邊界：上下兩條、兩端半圓用細條近似（只擋移動，不畫、不擋視線）
   const cy = (ARENA.top + ARENA.bot) / 2;
@@ -70,52 +71,45 @@ function tryBuild(rng) {
   wallParts.push(rect(WALL_X, y0, 24, ARENA.bot - y0));
   for (const r of wallParts) G.walls.push(r, mirrorRect(r));
 
-  // 野區：隨機岩石＋食材怪物，左右對稱（公平），中線上放硬殼怪
-  const half = rect(WILD.x + 20, WILD.y, W / 2 - WILD.x - 80, WILD.h);
+  // 野區：整片隨機、不對稱（使用者指定：打亂左右，讓雙方得到對面搶食材，增加交互）。
+  // 公平性改由「雙方到各種食材的距離差不多」來保證（見 tryBuild 最後的檢查）【自行修改】
+  const area = rect(WILD.x + 20, WILD.y, WILD.w - 40, WILD.h);
   const rocks = [], spots = [];
   const R = (a, b) => a + rng() * (b - a);
   const overlap = (r, x, y, m) => x > r.x - m && x < r.x + r.w + m && y > r.y - m && y < r.y + r.h + m;
-  for (let k = 0, tries = 0; k < 5 && tries < 200; tries++) {
-    const w = R(80, 220), h = R(60, 200), r = rect(R(half.x + 60, half.x + half.w - w), R(half.y, half.y + half.h - h), w, h);
+  for (let k = 0, tries = 0; k < 10 && tries < 400; tries++) {
+    const w = R(80, 220), h = R(60, 200), r = rect(R(area.x + 60, area.x + area.w - 60 - w), R(area.y, area.y + area.h - h), w, h);
     if (rocks.some(o => r.x < o.x + o.w + 90 && r.x + r.w + 90 > o.x && r.y < o.y + o.h + 90 && r.y + r.h + 90 > o.y)) continue;
     rocks.push(r); k++;
   }
-  const freeSpot = (x0, x1, minGap) => {
-    for (let tries = 0; tries < 300; tries++) {
-      const x = R(x0, x1), y = R(half.y + 40, half.y + half.h - 40);
+  const freeSpot = minGap => {
+    for (let tries = 0; tries < 400; tries++) {
+      const x = R(area.x, area.x + area.w), y = R(area.y + 40, area.y + area.h - 40);
       if (rocks.some(r => overlap(r, x, y, 60))) continue;
       if (spots.some(s => Math.hypot(s.x - x, s.y - y) < minGap)) continue;
       return { x, y };
     }
     return null;
   };
-  // 每局完全隨機：每種食材的位置沒有固定規律（硬殼不再固定在中線、蔬菜不再固定在家門口），玩家無法背地圖【使用者指定】
-  const left = [];
-  // 每邊 5 隻（使用者指定減少；原為 8 隻）：四種各一隻，再隨機多一隻蔬菜、菇類或魚類
-  const types = ['veg', 'mush', 'fish', 'shell', ['veg', 'mush', 'fish'][Math.floor(rng() * 3)]];
-  for (let i = types.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [types[i], types[j]] = [types[j], types[i]]; }
+  // 全圖 10 隻：四種各兩隻，再隨機多兩隻蔬菜、菇類或魚類；位置整片隨機
+  const types = ['veg', 'veg', 'mush', 'mush', 'fish', 'fish', 'shell', 'shell'];
+  for (let k = 0; k < 2; k++) types.push(['veg', 'mush', 'fish'][Math.floor(rng() * 3)]);
+  const mons = [];
   for (const type of types) {
-    const s = freeSpot(half.x, half.x + half.w, 160);
+    const s = freeSpot(170);
     if (!s) return false;
-    spots.push(s); left.push({ type, ...s });
+    spots.push(s); mons.push({ type, ...s });
   }
-  // 「家門口的蔬菜」：離自家最近的那隻（教學與收納蔬餅會用到）
-  left.filter(n => n.type === 'veg').sort((a, b) => a.x - b.x)[0].home = true;
-  const shells = [];
   // 草叢【使用者指定】：只在野區，不擋路也不擋視線，但角色在裡面時對手看不到
   const bushes = [];
   const boxHit = (a, b, m) => a.x < b.x + b.w + m && a.x + a.w + m > b.x && a.y < b.y + b.h + m && a.y + a.h + m > b.y;
-  for (let k = 0, tries = 0; k < 4 && tries < 300; tries++) {
-    const w = R(110, 190), h = R(90, 170), b = rect(R(half.x, half.x + half.w - w), R(half.y, half.y + half.h - h), w, h);
+  for (let k = 0, tries = 0; k < 8 && tries < 500; tries++) {
+    const w = R(110, 190), h = R(90, 170), b = rect(R(area.x, area.x + area.w - w), R(area.y, area.y + area.h - h), w, h);
     if (rocks.some(o => boxHit(b, o, 30)) || bushes.some(o => boxHit(b, o, 80)) || spots.some(s => overlap(b, s.x, s.y, 70))) continue;
     bushes.push(b); k++;
   }
-  G.bushes = bushes.flatMap(b => [b, mirrorRect(b)]);
-  for (const r of rocks) { const m = mirrorRect(r); r.rock = m.rock = true; G.walls.push(r, m); }
-  if (rng() < 0.6) {   // 中線偶爾有一塊大石頭
-    const h = R(80, 160), y = R(WILD.y + 40, WILD.y + WILD.h - 40 - h);
-    G.walls.push({ ...rect(W / 2 - 50, y, 100, h), rock: true });
-  }
+  G.bushes = bushes;
+  for (const r of rocks) { r.rock = true; G.walls.push(r); }
   G.solids = G.walls.concat(G.bounds);
 
   const cookState = () => ({ cooking: null, progress: 0, done: false, doneAt: 0, flipped: false, flippedOnce: false, beingFlipped: null });
@@ -131,10 +125,12 @@ function tryBuild(rng) {
     tm.stoves = STOVE_Y.map(y => st('stove', WALL_X + 12, y, { ...cookState(), wall: true, out }));
     // 就地鍋只做收納蔬餅，放在廚房內，敵人碰不到【自行修改】
     tm.quick = st('stove', 440, 880, { ...cookState(), quick: true, raw: false, prepP: 0 });
-    // 桌子：中間是倉庫，上下是備料台。桌子是實體，不能從底下穿過（使用者指定），兩側都能使用
+    // 桌子：中間兩個桌面，上下兩塊砧板。桌子是實體，不能從底下穿過（使用者指定），兩側都能使用
     tm.desk = t === 0 ? rect(270, 430, 60, 340) : mirrorRect(rect(270, 430, 60, 340));
-    tm.preps = [st('prep', 300, 480, { recipe: null, progress: 0, done: false, desk: true }), st('prep', 300, 720, { recipe: null, progress: 0, done: false, desk: true })];
-    tm.storage = st('storage', 300, 600, { items: [], desk: true });
+    // 桌上依序是：砧板、桌面、桌面、砧板（使用者指定：倉庫改成兩個桌面、備料台改成砧板）
+    const board = y => st('prep', 300, y, { items: [], recipe: null, progress: 0, done: false, desk: true });
+    tm.preps = [board(472), board(728)];
+    tm.tables = [st('table', 300, 557, { items: [], desk: true }), st('table', 300, 643, { items: [], desk: true })];
     tm.pass = st('pass', 110, 600);
     tm.spawn = [P(t, 480, 560), P(t, 480, 640)];
     tm.floor = t === 0 ? rect(0, ARENA.top, WALL_X, ARENA.bot - ARENA.top) : mirrorRect(rect(0, ARENA.top, WALL_X, ARENA.bot - ARENA.top));
@@ -142,21 +138,29 @@ function tryBuild(rng) {
     tm.zone = t === 0 ? rect(0, 0, WALL_X + 24, H) : mirrorRect(rect(0, 0, WALL_X + 24, H));
     tm.doors = DOORS.map(([a, b]) => ({ ...P(t, WALL_X + 12, (a + b) / 2), h: b - a }));
     G.teams.push(tm);
-    for (const n of left) {
-      const p = P(t, n.x, n.y);
-      G.nodes.push({ id: G.nodes.length, type: n.type, x: p.x, y: p.y, hp: CFG.MONSTER_HP, respawn: 0, res: null, side: t, lastHit: -1, home: !!n.home });
-    }
   }
+  // side：怪物在哪一半（NPC 埋伏時用），不再代表屬於哪一隊
+  for (const n of mons) G.nodes.push({ id: G.nodes.length, type: n.type, x: n.x, y: n.y, hp: CFG.MONSTER_HP, respawn: 0, res: null, side: n.x < W / 2 ? 0 : 1, lastHit: -1 });
   for (const tm of G.teams) G.solids.push(tm.desk);   // 擋移動與尋路，不擋視線
-  for (const s of shells) G.nodes.push({ id: G.nodes.length, type: 'shell', x: s.x, y: s.y, hp: CFG.MONSTER_HP, respawn: 0, res: null, side: -1, lastHit: -1 });
   buildGrid();
-  // 確認雙方都走得到每一隻怪物
+  // 確認雙方都走得到每一隻怪物，並算出路程
+  const far = [{}, {}];
   for (const tm of G.teams) {
-    const [ax, ay] = cellOf(tm.spawn[0].x, tm.spawn[0].y);
     for (const n of G.nodes) {
-      const [bx, by] = freeCellNear(...cellOf(n.x, n.y), teamGrids[tm.id]);
-      if (!astar(ax, ay, bx, by, teamGrids[tm.id])) return false;
+      const p = findPath(tm.spawn[0].x, tm.spawn[0].y, n.x, n.y, tm.id);
+      if (!p) return false;
+      const d = pathLength(p);
+      if (far[tm.id][n.type] === undefined || d < far[tm.id][n.type]) far[tm.id][n.type] = d;
+      n['d' + tm.id] = d;
     }
+    // 「家門口的蔬菜」：離自家最近的蔬菜（教學與收納蔬餅會用到）
+    tm.homeVeg = G.nodes.filter(n => n.type === 'veg').sort((a, b) => a['d' + tm.id] - b['d' + tm.id])[0];
+  }
+  // 公平性：雙方到四種食材（各自最近一隻）的路程總和相差不超過 FAIR 比例，否則重抽
+  if (fair) {
+    const sum = t => Object.keys(ING).reduce((a, k) => a + far[t][k], 0);
+    const a = sum(0), b = sum(1);
+    if (Math.abs(a - b) / Math.max(a, b) > CFG.WILD_FAIR) return false;
   }
   buildSegs();
   return true;

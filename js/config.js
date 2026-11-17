@@ -19,7 +19,9 @@ const CFG = {
   PREP_PER_ING: 2,       // 文件：每份原料備料兩秒
   TAKE: 1, PLACE: 1, SUBMIT: 1, EAT: 1, // 文件
   TOOL: 1,               // 文件 v0.6：換工具一秒（已移除手套【使用者指定】）
-  STORAGE_CAP: 3,        // 文件：廚房三份原料
+  WILD_FAIR: 0.06,       // 野區不對稱：雙方到四種食材的路程總和最多相差 6%（自行修改；12% 時路程較短的一方勝率 63%）
+  TABLE_CAP: 2,          // 桌面：倉庫改成兩個桌面，每個放兩份原料（使用者指定兩個桌面；容量自行修改）
+  BOARD_CAP: 3,          // 砧板：最多放三份原料（最多原料的料理需要三份）
   GROUND_LIFE: 20,       // 文件：地面物品二十秒
 
   STUN_WINDUP: 0.8, STUN_CD: 12, STUN_DOWN: 3, STUN_IMMUNE: 2, CHARGES: 3, // 文件

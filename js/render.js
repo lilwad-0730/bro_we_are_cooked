@@ -196,8 +196,8 @@ function drawFog() {
 }
 
 const STATION_LOOK = {
-  storage: { w: 92, h: 44, label: '倉庫', fill: '#6b5440' },
-  prep: { w: 74, h: 44, label: '備料台', fill: '#6e6a5e' },
+  table: { w: 92, h: 44, label: '桌面', fill: '#8a6a44' },
+  prep: { w: 74, h: 44, label: '砧板', fill: '#6e6a5e' },
   stove: { w: 64, h: 52, label: '爐台', fill: '#3c3c42' },
   pass: { w: 52, h: 76, label: '出餐口', fill: '#7b6a2e' },
   tool: { w: 54, h: 66, label: '工具架', fill: '#4d5a3e' },
@@ -210,7 +210,7 @@ function drawStation(s) {
   const L = s.desk ? { ...base, w: 52, h: 52 } : base;   // 桌上的設施縮成桌子寬度
   if (s.quick) drawWokArt(ctx, s.x, s.y, L.w, L.h, tm.color);
   else if (s.type === 'stove') drawStoveArt(ctx, s.x, s.y, L.w, L.h, tm.color, { pot: !!s.cooking, lit: !!s.cooking && !s.done && !s.flipped });
-  else if (s.type === 'storage') drawCrateArt(ctx, s.x, s.y, L.w, L.h, tm.color);
+  else if (s.type === 'table') drawTableArt(ctx, s.x, s.y, L.w, L.h, tm.color);
   else if (s.type === 'prep') drawPrepArt(ctx, s.x, s.y, L.w, L.h, tm.color);
   else if (s.type === 'pass') drawPassArt(ctx, s.x, s.y, L.w, L.h, tm.color);
   else { rr(ctx, s.x - L.w / 2, s.y - L.h / 2, L.w, L.h, 6); ctx.fillStyle = L.fill; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = tm.color; ctx.stroke(); }
@@ -268,7 +268,14 @@ function drawDynamicStations() {
     const mine = s.team === 0;
     // 半開放廚房：牆上的火爐狀態雙方都看得到（使用者指定），讓對手知道能不能去關火
     if (!mine && !seen(s) && !s.wall) { if (s.type !== 'pass' && s.type !== 'tool' && s.type !== 'glove') text(ctx, '?', s.x, s.y, { size: 32, bold: true, align: 'center', color: 'rgba(255,255,255,.5)' }); continue; }
-    if (s.type === 'storage') s.items.forEach((k, i) => drawItemIcon(ctx, 'raw', k, s.x + (i - 1) * 17, s.y + 2, 9));
+    // 桌面與砧板上的原料；砧板上的原料剛好組成料理時，下方顯示料理名稱
+    if (s.type === 'table') s.items.forEach((k, i) => drawItemIcon(ctx, 'raw', k, s.x + (s.items.length === 1 ? 0 : (i - 0.5) * 22), s.y + 1, 10));
+    if (s.type === 'prep' && !s.recipe && s.items.length) {
+      const n = s.items.length;
+      s.items.forEach((k, i) => drawItemIcon(ctx, 'raw', k, s.x + (n === 1 ? 0 : (i - (n - 1) / 2) * 15), s.y + 2 + (i % 2 ? 4 : -3), 8.5));
+      const rk = recipeOn(s);
+      if (rk && mine) text(ctx, '→' + RECIPES[rk].name, s.x + 36, s.y, { size: 17, bold: true, align: 'left', color: '#ffe066', stroke: '#000' });   // 寫在桌子旁邊，避免蓋到下一個設施的名稱
+    }
     if (s.type === 'prep' && s.recipe) {
       drawItemIcon(ctx, 'semi', s.recipe, s.x, s.y + 2, 14);
       if (!s.done) bar(ctx, s.x, s.y + 18, 60, s.progress / (RECIPES[s.recipe].ings.length * CFG.PREP_PER_ING), '#f0c75e');
@@ -588,9 +595,9 @@ function drawToasts(dt) {
 
 const HELP = [
   'WASD 移動　滑鼠 瞄準　空白鍵 打暈',
-  'E 互動：攻擊怪物、拾取、入庫、備料、放鍋',
+  'E 互動：攻擊怪物、拾取、放上砧板／桌面、備料、放鍋',
   '　　　　取餐、交餐、關敵方火爐的火、開火',
-  '1～5 在備料台選料理（也可以直接點選單）',
+  '料理的原料放在同一塊砧板上才能備料；數字鍵拿回指定原料',
   'Q 放下手上物品　R 收進背包（1 秒前搖）',
   'Tab 開關背包，拖到框外丟棄',
   'V 觀戰　Z 全圖／跟隨　滾輪 縮放',

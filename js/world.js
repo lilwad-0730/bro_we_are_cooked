@@ -105,6 +105,15 @@ function tryBuild(rng) {
     if (!s) return false;
     shells.push(s);
   }
+  // 草叢【使用者指定】：只在野區，不擋路也不擋視線，但角色在裡面時對手看不到
+  const bushes = [];
+  const boxHit = (a, b, m) => a.x < b.x + b.w + m && a.x + a.w + m > b.x && a.y < b.y + b.h + m && a.y + a.h + m > b.y;
+  for (let k = 0, tries = 0; k < 4 && tries < 300; tries++) {
+    const w = R(110, 190), h = R(90, 170), b = rect(R(half.x, half.x + half.w - w), R(half.y, half.y + half.h - h), w, h);
+    if (rocks.some(o => boxHit(b, o, 30)) || bushes.some(o => boxHit(b, o, 80)) || spots.some(s => overlap(b, s.x, s.y, 70))) continue;
+    bushes.push(b); k++;
+  }
+  G.bushes = bushes.flatMap(b => [b, mirrorRect(b)]);
   for (const r of rocks) G.walls.push(r, mirrorRect(r));
   if (rng() < 0.6) {   // 中線偶爾有一塊大石頭
     const h = R(80, 160), y = R(WILD.y + 40, WILD.y + WILD.h - 40 - h);
@@ -130,7 +139,6 @@ function tryBuild(rng) {
     tm.preps = [st('prep', 300, 480, { recipe: null, progress: 0, done: false }), st('prep', 300, 720, { recipe: null, progress: 0, done: false })];
     tm.storage = st('storage', 300, 600, { items: [] });
     tm.pass = st('pass', 110, 600);
-    tm.gloveRack = st('glove', 440, 320);
     tm.spawn = [P(t, 480, 560), P(t, 480, 640)];
     tm.floor = t === 0 ? rect(0, ARENA.top, WALL_X, ARENA.bot - ARENA.top) : mirrorRect(rect(0, ARENA.top, WALL_X, ARENA.bot - ARENA.top));
     // 敵方不可進入的範圍：整個廚房（含牆與門）
@@ -332,7 +340,12 @@ function lineOfSight(a, b) {
   return true;
 }
 
+const inBush = p => (G.bushes || []).find(b => p.x > b.x && p.x < b.x + b.w && p.y > b.y && p.y < b.y + b.h);
+const BUSH_REVEAL = 90;   // 對手走到這個距離內才看得到草叢裡的人
 function canSee(team, p) {
+  if (p.team !== undefined && p.team !== team && G.chars.includes(p) && inBush(p)) {
+    return G.chars.some(c => c.team === team && dist(c, p) < BUSH_REVEAL);
+  }
   for (const c of G.chars) if (c.team === team && dist(c, p) < CFG.VISION && lineOfSight(c, p)) return true;
   return false;
 }

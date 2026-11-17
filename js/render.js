@@ -120,6 +120,31 @@ function drawGround() {
   stadiumPath(ctx); ctx.lineWidth = 14; ctx.strokeStyle = '#15171a'; ctx.stroke();
 }
 
+// 草叢畫在角色上面（半透明），躲在裡面的己方角色看得到但被草蓋住
+function drawBushes() {
+  for (const b of G.bushes || []) {
+    ctx.save();
+    rr(ctx, b.x, b.y, b.w, b.h, Math.min(b.w, b.h) * 0.45);
+    ctx.fillStyle = 'rgba(52,120,58,.78)'; ctx.fill();
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(30,80,34,.9)'; ctx.stroke();
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(120,190,100,.45)'; ctx.lineWidth = 3;
+    for (let x = b.x + 12; x < b.x + b.w; x += 22) for (let y = b.y + 16; y < b.y + b.h; y += 26) {
+      const o = ((x * 7 + y * 13) % 9) - 4;
+      ctx.beginPath(); ctx.moveTo(x + o, y + 8); ctx.lineTo(x + o - 5, y - 6); ctx.moveTo(x + o, y + 8); ctx.lineTo(x + o + 5, y - 6); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // 己方躲在草叢裡的人：畫虛線圈提示「隱身中」
+  for (const c of G.chars) {
+    if (c.team !== 0 || !inBush(c)) continue;
+    ctx.save(); ctx.globalAlpha = 0.55; drawChar(c); ctx.restore();
+    ctx.beginPath(); ctx.arc(c.x, c.y, CFG.R + 9, 0, Math.PI * 2);
+    ctx.setLineDash([5, 5]); ctx.lineWidth = 3; ctx.strokeStyle = '#d8ffd0'; ctx.stroke(); ctx.setLineDash([]);
+    text(ctx, '隱身', c.x, c.y - CFG.R - 34, { size: 20, bold: true, align: 'center', color: '#d8ffd0', stroke: 'rgba(0,0,0,.8)' });
+  }
+}
+
 function drawChar(c) {
   const tm = G.teams[c.team];
   ctx.save(); ctx.translate(c.x, c.y);
@@ -132,7 +157,6 @@ function drawChar(c) {
     ctx.beginPath(); ctx.moveTo(CFG.R + 7, 0); ctx.lineTo(CFG.R - 1, -6); ctx.lineTo(CFG.R - 1, 6); ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
     ctx.rotate(-c.face);
   } else text(ctx, '暈', 0, 1, { size: 24, bold: true, align: 'center', color: '#ffe066' });
-  if (c.gloves) { ctx.beginPath(); ctx.arc(0, 0, CFG.R + 3, 0, Math.PI * 2); ctx.strokeStyle = '#ff9f43'; ctx.lineWidth = 3; ctx.stroke(); }
   c.bag.forEach((it, i) => drawItemIcon(ctx, it.kind, it.key, -CFG.R - 4 + i * 18, CFG.R - 4, 10));
   if (c.hand) drawItemIcon(ctx, c.hand.kind, c.hand.key, 0, -CFG.R - 18, 14);
   text(ctx, c.name + (c.stunOK ? ' ' + '●'.repeat(c.charges) + '○'.repeat(CFG.CHARGES - c.charges) : ''), 0, CFG.R + 20,
@@ -275,6 +299,7 @@ function drawWorld() {
   }
   drawFx();
   for (const c of G.chars) if (c.team === 0 || seen(c)) drawChar(c);
+  drawBushes();
   drawFog();
   ctx.setTransform(z, 0, 0, z, VW / 2 - cam.x * z, VH / 2 - cam.y * z);
   drawStaticLayer();
@@ -428,6 +453,7 @@ function drawMinimap() {
   }
   ctx.fillStyle = '#25506e'; for (const r of G.waters) ctx.fillRect(r.x, r.y, r.w, r.h);
   ctx.fillStyle = '#8a8e99'; for (const r of G.walls) ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.fillStyle = '#3f8a45'; for (const b of G.bushes || []) ctx.fillRect(b.x, b.y, b.w, b.h);
   for (const n of G.nodes) { ctx.beginPath(); ctx.arc(n.x, n.y, 22, 0, Math.PI * 2); ctx.fillStyle = ING[n.type].color; ctx.fill(); }
   for (const c of G.chars) {
     if (c.team !== 0 && !seen(c)) continue;
@@ -470,7 +496,7 @@ function drawPlayerPanel() {
   }
   const tx = x + 54 + CFG.BAG_SLOTS * 44 + 6;
   const lines = [
-    (c.gloves ? '戴手套｜' : '') + '速度 ' + Math.round(speedOf(c) / CFG.SPEED * 100) + '%',
+    '速度 ' + Math.round(speedOf(c) / CFG.SPEED * 100) + '%',
     '打暈 ' + (c.stunOK ? c.charges + ' 次' + (c.stunCd > 0 ? '（冷卻 ' + Math.ceil(c.stunCd) + '）' : '') : '未解鎖'),
     '關火 ' + (c.flipCd > 0 ? '冷卻 ' + Math.ceil(c.flipCd) + ' 秒' : '可用'),
   ];

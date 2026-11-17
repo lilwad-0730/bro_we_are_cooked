@@ -17,7 +17,7 @@ function getContext(c) {
       case 'stove':
         if (s.flipped) return { label: 'E 重新開火', btn: '開火', run: () => startFix(c, s) };
         if (s.done && RECIPES[s.cooking].ability) return { label: 'E 食用' + RECIPES[s.cooking].name, btn: '食用', run: () => startEat(c, s) };
-        if (s.done) return { label: c.gloves ? 'E 取成品' : '成品要戴手套才能拿（到手套架按 E）', btn: '取成品', run: () => startTakeDish(c, s) };
+        if (s.done) return { label: 'E 取成品', btn: '取成品', run: () => startTakeDish(c, s) };
         if (s.quick) {
           if (s.raw) return { label: 'E 備料收納蔬餅（2 秒）', btn: '備料', run: () => startQuickPrep(c, s) };
           if (!s.cooking) return { label: c.hand && c.hand.kind === 'raw' && c.hand.key === 'veg' ? 'E 投入蔬菜' : '就地鍋：拿一份蔬菜來做收納蔬餅', btn: '投入', run: () => startQuickDeposit(c, s) };
@@ -43,13 +43,11 @@ function getContext(c) {
         break;
       case 'tool':
         return { label: '按數字換工具（目前 ' + TOOLS[c.tool] + '）', menu: TOOL_KEYS.map((k, i) => ({ key: String(i + 1), label: TOOLS[k] + '（剋制' + Object.values(ING).filter(g => g.tool === k).map(g => g.name).join('、') + '）', ok: c.tool !== k, run: () => startTool(c, k) })) };
-      case 'glove':
-        return { label: c.gloves ? 'E 脫下手套' : 'E 戴上手套（拿成品必備）', btn: c.gloves ? '脫手套' : '戴手套', run: () => startGlove(c, !c.gloves) };
     }
   }
   const it = G.items.filter(i => near(c, i, 44) && (i.team === undefined || i.team === c.team)).sort((a, b) => dist(a, c) - dist(b, c))[0];
   if (it) {
-    if (!c.hand) return { label: 'E 拾取' + itemName(it) + (it.kind === 'dish' && !c.gloves ? '（需要手套）' : ''), btn: '拾取', run: () => startPick(c, it) };
+    if (!c.hand) return { label: 'E 拾取' + itemName(it), btn: '拾取', run: () => startPick(c, it) };
     if (it.kind !== 'dish' && bagFree(c) > 0) return { label: 'E 把' + itemName(it) + '收進背包（1 秒前搖）', btn: '收進背包', run: () => startStoreBag(c, it) };
   }
   const n = G.nodes.filter(n => near(c, n)).sort((a, b) => dist(a, c) - dist(b, c))[0];

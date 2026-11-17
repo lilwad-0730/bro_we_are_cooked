@@ -17,7 +17,7 @@ function makeChar(id, t, idx, name) {
   const sp = G.teams[t].spawn[idx];
   return {
     id, team: t, idx, name, x: sp.x, y: sp.y, face: t === 0 ? 0 : Math.PI,
-    hand: null, bag: [], hasBag: false, tool: idx === 0 ? 'knife' : 'mallet', gloves: false,
+    hand: null, bag: [], hasBag: false, tool: idx === 0 ? 'knife' : 'mallet',
     stunOK: false, charges: 0, stunCd: 0, flipCd: 0, down: 0, immune: 0,
     action: null, ai: true, job: null, path: null, pathGoal: null, repath: 0,
   };
@@ -70,11 +70,10 @@ const near = (c, o, r = CFG.INTERACT) => dist(c, o) <= r;
 const busy = c => c.down > 0 || c.action;
 
 // ---------------------------------------------------------------- 互動（回傳 true 或失敗原因）
-// 攻擊食材怪物：每一擊傷害相同（雙方攻擊力相等），打出最後一擊的隊伍拿到食材
+// 攻擊食材怪物：每一擊傷害相同（雙方攻擊力相等），打出最後一擊的人直接拿到食材【使用者指定】
 function startGather(c, n) {
   if (busy(c)) return '動作中';
   if (c.hand) return '手上有東西，先放下';
-  if (c.gloves) return '戴著手套不能攻擊';
   if (!near(c, n)) return '離食材怪物太遠';
   if (n.hp <= 0) return '食材怪物重生中';
   const a = { acc: 0 };
@@ -88,9 +87,8 @@ function startGather(c, n) {
       G.fx.push({ type: 'hit', x: n.x, y: n.y, t: 0, dur: 0.25 });
       if (n.hp > 0) return false;
       n.hp = 0; n.respawn = CFG.NODE_RESPAWN; a.done = true;
-      const ang = Math.atan2(c.y - n.y, c.x - n.x);
-      c.lastGathered = spawnItem('raw', n.type, n.x + Math.cos(ang) * 22, n.y + Math.sin(ang) * 22, c.team);
-      floatText(n.x, n.y - 30, ING[n.type].name + ' 歸' + team(c).name, team(c).color);
+      c.hand = { id: ++G.itemSeq, kind: 'raw', key: n.type, team: c.team, life: CFG.GROUND_LIFE };
+      floatText(n.x, n.y - 30, c.name + ' 拿到' + ING[n.type].name, team(c).color);
       return true;
     },
   });
@@ -102,7 +100,6 @@ function startPick(c, it) {
   if (it.team !== undefined && it.team !== c.team) return '這是對方的東西，不能拿';
   if (c.hand) return '雙手只能拿一件';
   if (!near(c, it, 44)) return '太遠';
-  if (it.kind === 'dish' && !c.gloves) return '成品要戴手套才能拿';
   return act(c, '拾取', CFG.PICK, () => { removeItem(it); c.hand = it; }, {
     check: () => G.items.includes(it) && !c.hand && near(c, it, 50),
   });
@@ -226,7 +223,6 @@ function startPlace(c, s) {
   if (!stoveEmpty(s)) return '爐台正在使用';
   const it = c.hand;
   if (!it || (it.kind !== 'semi' && it.kind !== 'dish')) return '手上要拿半成品';
-  if (it.kind === 'dish' && !c.gloves) return '要戴手套';
   return act(c, it.kind === 'semi' ? '放鍋' : '放回成品', CFG.PLACE, () => {
     c.hand = null;
     Object.assign(s, { cooking: it.key, progress: it.kind === 'dish' ? RECIPES[it.key].cook : 0, done: it.kind === 'dish', doneAt: G.time, flipped: false, flippedOnce: false });
@@ -237,12 +233,11 @@ function startTakeDish(c, s) {
   if (busy(c)) return '動作中';
   if (!s.done || RECIPES[s.cooking].ability) return '沒有可拿的成品';
   if (c.hand) return '雙手只能拿一件';
-  if (!c.gloves) return '成品要戴手套才能拿（到手套架）';
   if (!near(c, s)) return '太遠';
   return act(c, '取成品', CFG.TAKE, () => {
     c.hand = { id: ++G.itemSeq, kind: 'dish', key: s.cooking, team: c.team, life: CFG.GROUND_LIFE };
     Object.assign(s, { cooking: null, progress: 0, done: false, flipped: false, flippedOnce: false });
-  }, { check: () => s.done && !c.hand && c.gloves });
+  }, { check: () => s.done && !c.hand });
 }
 
 function canEat(c, rk) {
@@ -302,13 +297,6 @@ function startTool(c, tool) {
   if (c.tool === tool) return '已經拿著' + TOOLS[tool];
   return act(c, '換工具', CFG.TOOL, () => { c.tool = tool; });
 }
-function startGlove(c, on) {
-  if (busy(c)) return '動作中';
-  if (!near(c, team(c).gloveRack)) return '離手套架太遠';
-  if (c.hand) return '雙手要空著才能換手套';
-  if (c.gloves === on) return true;
-  return act(c, on ? '戴手套' : '脫手套', CFG.GLOVE, () => { c.gloves = on; });
-}
 
 // ---------------------------------------------------------------- 關火（使用者指定：只有廚房牆上的火爐能被廚房外的敵人關火）
 // flipped 代表「火被關掉」：烹調暫停，直到己方開火
@@ -324,16 +312,12 @@ function startFlip(c, s) {
   if (c.flipCd > 0) return '關火冷卻中';
   if (!near(c, s)) return '太遠';
   if (guardNear(s)) return '守方就在鍋旁，無法關火';
-  s.beingFlipped = c.id;
-  G.pings.push({ x: s.x, y: s.y, team: s.team, t: 0, dur: 3 });
-  log(s.team, '警示：' + c.name + ' 正在關' + G.teams[s.team].name + '火爐的火！');
-  if (s.team === 0) toast('警示：我方火爐正在被關火！', '#ff8a8a');
+  s.beingFlipped = c.id;   // 不通知對方【使用者指定】：守方只能自己看到或發現鍋子熄火
   return act(c, '關火', CFG.FLIP_CHANNEL, () => {
     s.flipped = true; s.flippedOnce = true; s.beingFlipped = null;
     s.progress = Math.max(0, s.progress - CFG.FLIP_SETBACK);
     c.flipCd = CFG.FLIP_CD;
-    log(c.team, c.name + ' 關掉了' + G.teams[s.team].name + '火爐的火（' + RECIPES[s.cooking].name + '）');
-    floatText(s.x, s.y - 30, '熄火！', '#ff7070');
+    if (c.team === 0 || G.spectate) { log(c.team, c.name + ' 關掉了' + G.teams[s.team].name + '火爐的火（' + RECIPES[s.cooking].name + '）'); floatText(s.x, s.y - 30, '熄火！', '#ff7070'); }
   }, {
     check: () => {
       if (!near(c, s, CFG.INTERACT + 10) || !flippable(s)) return false;
@@ -356,7 +340,6 @@ function stunReady(c) {
   if (c.charges <= 0) return '打暈次數為 0，要再吃力量燉湯';
   if (c.stunCd > 0) return '打暈冷卻中';
   if (c.hand) return '手上有東西，先放下（Q）';
-  if (c.gloves) return '戴著手套不能用工具';
   if (busy(c)) return '動作中';
   return true;
 }

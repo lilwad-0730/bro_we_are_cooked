@@ -17,7 +17,7 @@ const CFG = {
   BAG_PREP: 1,           // 文件：收納前搖
   PREP_PER_ING: 2,       // 文件：每份原料備料兩秒
   TAKE: 1, PLACE: 1, SUBMIT: 1, EAT: 1, // 文件
-  GLOVE: 1, TOOL: 1,     // 文件 v0.6：拿手套、換工具一秒
+  TOOL: 1,               // 文件 v0.6：換工具一秒（已移除手套【使用者指定】）
   STORAGE_CAP: 3,        // 文件：廚房三份原料
   GROUND_LIFE: 20,       // 文件：地面物品二十秒
 

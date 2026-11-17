@@ -110,7 +110,8 @@ function pickNode(c, k) {
   for (const n of G.nodes) {
     // 只避開隊友鎖定的怪物；對手鎖定的照樣可以去搶最後一擊
     if (n.type !== k || (n.res !== null && n.res !== c.id && G.chars[n.res].team === c.team)) continue;
-    const s = dist(c, n) * 1.25 + (n.hp > 0 ? 0 : n.respawn * CFG.SPEED);
+    // 血量越少越划算（打得快）；對手正在打的怪物也算，去搶尾刀
+    const s = dist(c, n) * 1.25 + (n.hp > 0 ? n.hp * CFG.GATHER_INT * CFG.SPEED * 0.5 : n.respawn * CFG.SPEED + CFG.MONSTER_HP * CFG.GATHER_INT * CFG.SPEED * 0.5);
     if (s < bs) { bs = s; best = n; }
   }
   return best;

@@ -283,7 +283,7 @@ function drawDynamicStations() {
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.stroke();
       for (const ex of [-7, 7]) { ctx.beginPath(); ctx.arc(n.x + ex, n.y - 6 + bob, 4, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.beginPath(); ctx.arc(n.x + ex, n.y - 5 + bob, 2, 0, Math.PI * 2); ctx.fillStyle = '#111'; ctx.fill(); }
       text(ctx, ING[n.type].ch, n.x, n.y + 8 + bob, { size: 18, bold: true, align: 'center', color: '#111', flat: true });
-      bar(ctx, n.x, n.y - 38, 50, n.hp / CFG.MONSTER_HP, n.hp <= 1 ? '#ff6b6b' : '#7ee07e', 7);
+      bar(ctx, n.x, n.y - 38, 50, n.hp / CFG.MONSTER_HP, n.hp <= CFG.MONSTER_HP * 0.3 ? '#ff6b6b' : '#7ee07e', 7);
     } else text(ctx, Math.ceil(n.respawn) + '', n.x, n.y + 1, { size: 26, bold: true, align: 'center', color: '#aaa' });
   }
 }

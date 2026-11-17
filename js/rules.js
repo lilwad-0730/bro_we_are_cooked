@@ -84,11 +84,15 @@ function startGather(c, n) {
       if (a.acc < CFG.GATHER_INT) return false;
       a.acc -= CFG.GATHER_INT;
       n.hp -= CFG.DMG; n.lastHit = c.team;
+      n.dmg = n.dmg || [0, 0]; n.dmg[c.team] += CFG.DMG;   // 記錄雙方各打了多少，用來判斷是不是搶到尾刀
       G.fx.push({ type: 'hit', x: n.x, y: n.y, t: 0, dur: 0.25 });
       if (n.hp > 0) return false;
       n.hp = 0; n.respawn = CFG.NODE_RESPAWN; a.done = true;
       c.hand = { id: ++G.itemSeq, kind: 'raw', key: n.type, team: c.team, life: CFG.GROUND_LIFE };
-      floatText(n.x, n.y - 30, c.name + ' 拿到' + ING[n.type].name, team(c).color);
+      const stole = n.dmg && n.dmg[1 - c.team] > 0;
+      floatText(n.x, n.y - 30, stole ? c.name + ' 搶到尾刀！' : c.name + ' 拿到' + ING[n.type].name, team(c).color);
+      if (stole) log(c.team, c.name + ' 搶到' + ING[n.type].name + '怪物的尾刀');
+      n.dmg = [0, 0];
       return true;
     },
   });
@@ -413,7 +417,7 @@ function updateWorld(dt) {
     s.progress += dt;
     if (s.progress >= RECIPES[s.cooking].cook) { s.done = true; s.doneAt = G.time; s.progress = RECIPES[s.cooking].cook; }
   }
-  for (const n of G.nodes) if (n.hp <= 0) { n.respawn -= dt; if (n.respawn <= 0) { n.hp = CFG.MONSTER_HP; n.lastHit = -1; } }
+  for (const n of G.nodes) if (n.hp <= 0) { n.respawn -= dt; if (n.respawn <= 0) { n.hp = CFG.MONSTER_HP; n.lastHit = -1; n.dmg = [0, 0]; } }
   for (let i = G.items.length - 1; i >= 0; i--) {
     const it = G.items[i];
     it.life -= dt;

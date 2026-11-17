@@ -142,7 +142,7 @@ cv.addEventListener('mousemove', e => { UI.mouse.x = e.clientX; UI.mouse.y = e.c
 
 // ---------------------------------------------------------------- 觸控搖桿
 // 左半邊：手指按下的位置就是錨點，往不同方向拖就移動；放開手指取消錨點，下次按下再重新放置。
-// 右半邊：保留給動作按鈕；在標題、結算畫面與教學說明步驟中，點一下代替按鍵。
+// 右半邊：保留給動作按鈕；教學說明步驟中點一下等於 Enter。標題與結算畫面點任何地方開始遊戲。
 const JOY_R = 60, JOY_DEAD = 8;   // 搖桿半徑與中心死區（實際像素）
 UI.joy = null;
 function onTouchStart(e) {
@@ -150,7 +150,7 @@ function onTouchStart(e) {
   UI.touchMode = true;
   for (const t of e.changedTouches) {
     const left = t.clientX < VW / 2;
-    if (G.state !== 'play') { if (left) startGame(false); else startTutorial(); return; }
+    if (tapMenu({ x: t.clientX / UI_SCALE, y: t.clientY / UI_SCALE })) return;
     if (left && !UI.joy) UI.joy = { id: t.identifier, ax: t.clientX, ay: t.clientY, x: t.clientX, y: t.clientY };
     else if (!left && G.tutorial) tutorialKey('Enter');
   }
@@ -167,7 +167,16 @@ cv.addEventListener('touchstart', onTouchStart, { passive: false });
 cv.addEventListener('touchmove', onTouchMove, { passive: false });
 cv.addEventListener('touchend', onTouchEnd, { passive: false });
 cv.addEventListener('touchcancel', onTouchEnd, { passive: false });
+// 標題與結算畫面：點擊螢幕任何地方開始遊戲；點「教學關卡」按鈕進入教學
+function tapMenu(p) {
+  if (G.state === 'play') return false;
+  if (inRect(p, UI.tutBtn)) startTutorial(); else startGame(false);
+  return true;
+}
+
 cv.addEventListener('mousedown', e => {
+  UI.mouse.x = e.clientX; UI.mouse.y = e.clientY;
+  if (tapMenu(uiMouse())) return;
   const c = player();
   if (!UI.bagOpen || !UI.slotRects) return;
   UI.slotRects.forEach((r, i) => { if (c.bag[i] && inRect(uiMouse(), r)) UI.drag = { item: c.bag[i] }; });

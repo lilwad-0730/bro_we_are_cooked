@@ -489,27 +489,42 @@ const HELP = [
 
 // 依可用高度把一組文字垂直置中
 function block(lines) {
+  // 放不下時（例如手機橫放）先省略標記 opt 的行（操作說明、副標），確保開始提示與按鈕看得到
+  if (lines.reduce((a, l) => a + l.gap, 0) > UH - 8) lines = lines.filter(l => !l.opt);
   const total = lines.reduce((a, l) => a + l.gap, 0);
   let y = Math.max(8, UH / 2 - total / 2);
   for (const l of lines) {
-    if (l.title) titleText(l.t, UW / 2, y + l.gap / 2, l.size);
-    else text(ctx, l.t, UW / 2, y + l.gap / 2, { size: l.size, bold: l.bold, align: 'center', color: l.color || '#eee' });
+    const cy = y + l.gap / 2;
+    if (l.title) titleText(l.t, UW / 2, cy, l.size);
+    else if (l.button) {
+      // 按鈕：記下位置，點擊時判斷
+      ctx.font = font(l.size, true);
+      const bw = ctx.measureText(l.t).width + 36, bh = l.size + 16;
+      UI.tutBtn = { x: UW / 2 - bw / 2, y: cy - bh / 2, w: bw, h: bh };
+      rr(ctx, UI.tutBtn.x, UI.tutBtn.y, bw, bh, bh / 2); ctx.fillStyle = 'rgba(255,214,90,.16)'; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#ffd65a'; ctx.stroke();
+      text(ctx, l.t, UW / 2, cy + 1, { size: l.size, bold: true, align: 'center', color: '#ffd65a' });
+    } else {
+      if (l.blink) ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(performance.now() / 600));
+      text(ctx, l.t, UW / 2, cy, { size: l.size, bold: l.bold, align: 'center', color: l.color || '#eee' });
+      ctx.globalAlpha = 1;
+    }
     y += l.gap;
   }
 }
 
 function drawOverlay() {
+  UI.tutBtn = null;
   if (G.state === 'title' || G.state === 'end' || UI.help) { ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(0, 0, UW, UH); }
   if (G.state === 'title') {
-    const m = G.measure;
     block([
       { t: '烹飪搜打撤', size: 40, title: true, gap: 50 },
-      { t: '你操作藍隊的「你」，隊友與敵方都是 NPC。', size: 15, color: '#ccc', gap: 22 },
-      { t: '六分鐘內規劃訂單，防範對方翻鍋與打暈。', size: 15, color: '#ccc', gap: 28 },
-      ...HELP.map(t => ({ t, size: 15, gap: 21 })),
-      { t: 'Enter 開始　｜　T 教學關卡　｜　V 觀戰', size: 18, bold: true, color: '#ffd27a', gap: 34 },
-      ...('ontouchstart' in window ? [{ t: '觸控：點左半邊開始，點右半邊進入教學', size: 15, color: '#ffd27a', gap: 24 }] : []),
-      { t: '倉庫到採集點：' + Object.entries(m).map(([k, v]) => k + ' ' + v + ' 秒').join('　'), size: 12, color: '#888', gap: 16 },
+      { t: '你操作藍隊的「你」，隊友與敵方都是 NPC。', size: 15, color: '#ccc', gap: 22, opt: true },
+      { t: '六分鐘內規劃訂單，防範對方翻鍋與打暈。', size: 15, color: '#ccc', gap: 28, opt: true },
+      ...HELP.map(t => ({ t, size: 15, gap: 19, opt: true })),
+      { t: '點擊螢幕開始遊戲', size: 22, bold: true, color: '#ffd27a', blink: true, gap: 38 },
+      { t: '教學關卡', size: 16, button: true, gap: 40 },
+      { t: '鍵盤：Enter 開始　T 教學　V 觀戰', size: 12, color: '#999', gap: 18, opt: true },
     ]);
   } else if (G.state === 'end') {
     const [a, b] = G.teams;
@@ -518,7 +533,9 @@ function drawOverlay() {
       { t: msg, size: 40, bold: true, color: G.winner === 0 ? a.color : (G.winner === 1 ? b.color : '#fff'), gap: 48 },
       { t: '我方 ' + a.score + '　：　' + b.score + ' 敵方', size: 26, bold: true, gap: 36 },
       { t: '共 ' + G.round + ' 輪' + (a.score === b.score && a.score > 0 ? '（同分：較早完成最後一次得分者勝）' : ''), size: 15, color: '#ccc', gap: 30 },
-      { t: 'Enter 再玩一局　｜　T 教學　｜　V 觀戰', size: 18, bold: true, color: '#ffd27a', gap: 26 },
+      { t: '點擊螢幕再玩一局', size: 22, bold: true, color: '#ffd27a', blink: true, gap: 38 },
+      { t: '教學關卡', size: 16, button: true, gap: 40 },
+      { t: '鍵盤：Enter 再玩　T 教學　V 觀戰', size: 12, color: '#999', gap: 18 },
     ]);
   } else if (UI.help) {
     block([{ t: '操作說明（H 關閉）', size: 24, bold: true, gap: 38 }, ...HELP.map(t => ({ t, size: 15, gap: 23 }))]);

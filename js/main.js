@@ -10,52 +10,52 @@ function getContext(c) {
   const sts = G.stations.filter(s => near(c, s)).sort((a, b) => dist(a, c) - dist(b, c));
   for (const s of sts) {
     if (s.team !== c.team) {
-      if (s.type === 'stove' && flippable(s)) return { label: 'E 翻鍋（按住 1.5 秒，對方會收到警示）', run: () => startFlip(c, s) };
+      if (s.type === 'stove' && flippable(s)) return { label: 'E 翻鍋（按住 1.5 秒，對方會收到警示）', btn: '翻鍋', run: () => startFlip(c, s) };
       continue;
     }
     switch (s.type) {
       case 'stove':
-        if (s.flipped) return { label: 'E 扶正鍋子', run: () => startFix(c, s) };
-        if (s.done && RECIPES[s.cooking].ability) return { label: 'E 食用' + RECIPES[s.cooking].name, run: () => startEat(c, s) };
-        if (s.done) return { label: c.gloves ? 'E 取成品' : '成品要戴手套才能拿（到手套架按 E）', run: () => startTakeDish(c, s) };
+        if (s.flipped) return { label: 'E 扶正鍋子', btn: '扶正', run: () => startFix(c, s) };
+        if (s.done && RECIPES[s.cooking].ability) return { label: 'E 食用' + RECIPES[s.cooking].name, btn: '食用', run: () => startEat(c, s) };
+        if (s.done) return { label: c.gloves ? 'E 取成品' : '成品要戴手套才能拿（到手套架按 E）', btn: '取成品', run: () => startTakeDish(c, s) };
         if (s.quick) {
-          if (s.raw) return { label: 'E 備料收納蔬餅（2 秒）', run: () => startQuickPrep(c, s) };
-          if (!s.cooking) return { label: c.hand && c.hand.kind === 'raw' && c.hand.key === 'veg' ? 'E 投入蔬菜' : '就地鍋：拿一份蔬菜來做收納蔬餅', run: () => startQuickDeposit(c, s) };
+          if (s.raw) return { label: 'E 備料收納蔬餅（2 秒）', btn: '備料', run: () => startQuickPrep(c, s) };
+          if (!s.cooking) return { label: c.hand && c.hand.kind === 'raw' && c.hand.key === 'veg' ? 'E 投入蔬菜' : '就地鍋：拿一份蔬菜來做收納蔬餅', btn: '投入', run: () => startQuickDeposit(c, s) };
           return { label: '收納蔬餅烹調中' };
         }
-        if (!s.cooking && c.hand && c.hand.kind !== 'raw') return { label: c.hand.kind === 'semi' ? 'E 放鍋' : 'E 放回成品', run: () => startPlace(c, s) };
+        if (!s.cooking && c.hand && c.hand.kind !== 'raw') return { label: c.hand.kind === 'semi' ? 'E 放鍋' : 'E 放回成品', btn: c.hand.kind === 'semi' ? '放鍋' : '放回', run: () => startPlace(c, s) };
         if (s.cooking) return { label: RECIPES[s.cooking].name + ' 烹調中' };
         break;
       case 'pass':
-        if (c.hand && c.hand.kind === 'dish') return { label: 'E 交餐', run: () => startSubmit(c) };
+        if (c.hand && c.hand.kind === 'dish') return { label: 'E 交餐', btn: '交餐', run: () => startSubmit(c) };
         break;
       case 'prep':
-        if (s.done) return { label: 'E 取半成品', run: () => startTakeSemi(c, s) };
-        if (s.recipe) return { label: 'E 繼續備料 ' + RECIPES[s.recipe].name, run: () => startPrep(c, s, s.recipe) };
+        if (s.done) return { label: 'E 取半成品', btn: '取半成品', run: () => startTakeSemi(c, s) };
+        if (s.recipe) return { label: 'E 繼續備料 ' + RECIPES[s.recipe].name, btn: '備料', run: () => startPrep(c, s, s.recipe) };
         if (!c.hand) return {
           label: '按數字選料理開始備料（倉庫 ' + tm.storage.items.map(k => ING[k].ch).join('') + (bagRaw(c) ? '＋背包 ' + c.bag.filter(i => i.kind === 'raw').map(i => ING[i.key].ch).join('') : '') + '）',
           menu: PREP_MENU.map((k, i) => ({ key: String(i + 1), label: RECIPES[k].name + '（' + RECIPES[k].ings.map(x => ING[x].ch).join('＋') + '）', ok: hasAll(prepPool(c), RECIPES[k].ings), run: () => startPrep(c, s, k) })),
         };
         break;
       case 'storage':
-        if ((c.hand && c.hand.kind === 'raw') || (!c.hand && bagRaw(c))) return { label: 'E 入庫（' + s.items.length + '/' + CFG.STORAGE_CAP + '）', run: () => startDeposit(c) };
-        if (!c.hand && s.items.length) return { label: 'E 取出一份原料', run: () => startTakeOut(c) };
+        if ((c.hand && c.hand.kind === 'raw') || (!c.hand && bagRaw(c))) return { label: 'E 入庫（' + s.items.length + '/' + CFG.STORAGE_CAP + '）', btn: '入庫', run: () => startDeposit(c) };
+        if (!c.hand && s.items.length) return { label: 'E 取出一份原料', btn: '取出', run: () => startTakeOut(c) };
         break;
       case 'tool':
         return { label: '按數字換工具（目前 ' + TOOLS[c.tool] + '）', menu: TOOL_KEYS.map((k, i) => ({ key: String(i + 1), label: TOOLS[k] + '（剋制' + Object.values(ING).filter(g => g.tool === k).map(g => g.name).join('、') + '）', ok: c.tool !== k, run: () => startTool(c, k) })) };
       case 'glove':
-        return { label: c.gloves ? 'E 脫下手套' : 'E 戴上手套（拿成品必備）', run: () => startGlove(c, !c.gloves) };
+        return { label: c.gloves ? 'E 脫下手套' : 'E 戴上手套（拿成品必備）', btn: c.gloves ? '脫手套' : '戴手套', run: () => startGlove(c, !c.gloves) };
     }
   }
   const it = G.items.filter(i => near(c, i, 44)).sort((a, b) => dist(a, c) - dist(b, c))[0];
   if (it) {
-    if (!c.hand) return { label: 'E 拾取' + itemName(it) + (it.kind === 'dish' && !c.gloves ? '（需要手套）' : ''), run: () => startPick(c, it) };
-    if (it.kind !== 'dish' && bagFree(c) > 0) return { label: 'E 把' + itemName(it) + '收進背包（1 秒前搖）', run: () => startStoreBag(c, it) };
+    if (!c.hand) return { label: 'E 拾取' + itemName(it) + (it.kind === 'dish' && !c.gloves ? '（需要手套）' : ''), btn: '拾取', run: () => startPick(c, it) };
+    if (it.kind !== 'dish' && bagFree(c) > 0) return { label: 'E 把' + itemName(it) + '收進背包（1 秒前搖）', btn: '收進背包', run: () => startStoreBag(c, it) };
   }
   const n = G.nodes.filter(n => near(c, n)).sort((a, b) => dist(a, c) - dist(b, c))[0];
   if (n) {
     if (n.hp <= 0) return { label: '採集點重生中 ' + Math.ceil(n.respawn) + ' 秒' };
-    return { label: 'E 採集' + ING[n.type].name + (ING[n.type].tool === c.tool ? '' : '（' + TOOLS[c.tool] + '不剋制，較慢）'), run: () => startGather(c, n) };
+    return { label: 'E 採集' + ING[n.type].name + (ING[n.type].tool === c.tool ? '' : '（' + TOOLS[c.tool] + '不剋制，較慢）'), btn: '採集', run: () => startGather(c, n) };
   }
   return null;
 }
@@ -142,8 +142,8 @@ cv.addEventListener('mousemove', e => { UI.mouse.x = e.clientX; UI.mouse.y = e.c
 
 // ---------------------------------------------------------------- 觸控操作
 // 左半邊：手指按下的位置就是錨點，往不同方向拖就移動；放開手指取消錨點，下次按下再重新放置。
-// 右半邊：點一下等於互動鍵 E（教學說明步驟中等於 Enter）。
-// 右下角按鈕：打暈、放下、收包、背包；右上角：暫停。選單項目可以直接點。
+// 右下角：最大的「互動」按鈕（顯示當下的互動名稱，代替 E），旁邊是打暈、放下、收包、背包；右上角：暫停。
+// 選單項目可以直接點。點螢幕右半邊本身不觸發動作。
 const JOY_R = 60, JOY_DEAD = 8;   // 搖桿半徑與中心死區（實際像素）
 const BTN_R = 30;                 // 按鈕半徑（實際像素，配合手指大小，不隨介面縮放）
 UI.joy = null;
@@ -151,15 +151,28 @@ UI.joy = null;
 // 觸控裝置（或剛用過觸控）才顯示手機按鈕
 const touchUI = () => UI.touchMode || (window.matchMedia && matchMedia('(pointer: coarse)').matches);
 
+// 互動按鈕要顯示的名稱與動作：靠近物件或設施時顯示對應的互動名稱
+function interactButton(c) {
+  const st = G.tutorial && TUT_STEPS[G.tutorial.i];
+  if (st && st.info) return { label: st.final ? '開始' : '繼續', on: true, run: () => tutorialKey('Enter') };
+  if (c.down > 0) return { label: '倒地', on: false };
+  if (c.action) return { label: c.action.label.slice(0, 4), on: false };
+  const cx = getContext(c);
+  if (cx && cx.run) return { label: cx.btn || '互動', on: true, run: () => playerKey('KeyE') };
+  if (cx && cx.menu) return { label: '點選單', on: false };
+  return { label: '互動', on: false };
+}
+
 function touchButtons() {
   if (G.state !== 'play' || G.spectate || G.paused || !touchUI()) return [];
   const c = player();
-  const x1 = VW - 46, x2 = VW - 120, y1 = VH - 50, y2 = VH - 124;
+  const ib = interactButton(c);
   return [
-    { label: '打暈', x: x1, y: y1, r: BTN_R + 4, on: stunReady(c) === true, run: () => playerKey('Space') },
-    { label: '放下', x: x1, y: y2, r: BTN_R, on: !!c.hand, run: () => playerKey('KeyQ') },
-    { label: '收包', x: x2, y: y1, r: BTN_R, on: bagFree(c) > 0 && !!c.hand && c.hand.kind !== 'dish', run: () => playerKey('KeyR') },
-    { label: '背包', x: x2, y: y2, r: BTN_R, on: true, active: UI.bagOpen, run: () => { UI.bagOpen = !UI.bagOpen; UI.drag = null; } },
+    { ...ib, primary: true, x: VW - 66, y: VH - 66, r: BTN_R + 12, run: ib.run || (() => {}) },
+    { label: '打暈', x: VW - 162, y: VH - 46, r: BTN_R, on: stunReady(c) === true, run: () => playerKey('Space') },
+    { label: '放下', x: VW - 150, y: VH - 128, r: BTN_R - 2, on: !!c.hand, run: () => playerKey('KeyQ') },
+    { label: '收包', x: VW - 92, y: VH - 160, r: BTN_R - 2, on: bagFree(c) > 0 && !!c.hand && c.hand.kind !== 'dish', run: () => playerKey('KeyR') },
+    { label: '背包', x: VW - 30, y: VH - 160, r: BTN_R - 2, on: true, active: UI.bagOpen, run: () => { UI.bagOpen = !UI.bagOpen; UI.drag = null; } },
     { label: '暫停', x: VW - 30, y: 28, r: 22, on: true, small: true, run: () => { G.paused = true; UI.joy = null; } },
   ];
 }
@@ -222,9 +235,7 @@ function onTouchStart(e) {
     UI.mouse.x = p.x; UI.mouse.y = p.y;
     if (startBagDrag(u, t.identifier)) continue;
     if (tapMenuItem(u)) continue;
-    if (p.x < VW / 2) { if (!UI.joy) UI.joy = { id: t.identifier, ax: p.x, ay: p.y, x: p.x, y: p.y }; continue; }
-    if (G.tutorial && tutorialKey('Enter')) continue;
-    playerKey('KeyE');
+    if (p.x < VW / 2 && !UI.joy) UI.joy = { id: t.identifier, ax: p.x, ay: p.y, x: p.x, y: p.y };
   }
 }
 function onTouchMove(e) {

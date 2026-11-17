@@ -33,12 +33,12 @@ const KEY_TO_TOUCH = [
   [/用滑鼠對準紅隊的人，/g, '靠近紅隊的人（會自動瞄準），'], [/用滑鼠/g, '用手指'],
   [/按數字 ?\d ?選/g, '點選單的'], [/按 5 做/g, '點選單做'],
   [/按數字選料理開始備料/g, '點選料理開始備料'], [/按數字換工具/g, '點選工具'],
-  [/按 E/g, '點右半邊'], [/^E /, '點右半邊：'],
+  [/按 E/g, '按「互動」'], [/^E /, '互動：'],
   [/按 R/g, '按「收包」'], [/按 Tab/g, '按「背包」'], [/按空白鍵/g, '按「打暈」'],
   [/（Q 放下）/g, '（按「放下」）'], [/（Q）/g, '（按「放下」）'],
   [/Esc 可以隨時離開/g, '右上角「暫停」可以隨時離開'],
-  [/Enter 開始正式對局，T 再玩一次教學，Esc 回標題/g, '點右半邊開始正式對局；「暫停」可回標題'],
-  [/Enter 繼續/g, '點右半邊繼續'],
+  [/Enter 開始正式對局，T 再玩一次教學，Esc 回標題/g, '按「開始」進入正式對局；「暫停」可回標題'],
+  [/Enter 繼續/g, '按「繼續」'],
 ];
 const keyText = s => (typeof touchUI === 'function' && touchUI() ? KEY_TO_TOUCH.reduce((t, [a, b]) => t.replace(a, b), String(s)) : s);
 
@@ -307,6 +307,10 @@ function layout() {
   o.narrow = UW - mb.w - 10 < 400;
   o.pw = o.narrow ? Math.min(UW - 12, 430) : Math.min(UW - mb.w - 10, 430);
   o.px = o.narrow ? UW / 2 - o.pw / 2 : Math.max(UW / 2 - o.pw / 2, mb.w + 4);
+  if (typeof touchUI === 'function' && touchUI()) {            // 手機：讓出右下角給按鈕
+    const maxRight = (VW - 210) / UI_SCALE;
+    if (o.px + o.pw > maxRight) { o.px = Math.max(o.narrow ? 6 : mb.w + 4, maxRight - o.pw); o.pw = Math.min(o.pw, maxRight - o.px); }
+  }
   o.py = UH - PANEL_H - 6;
   o.miniLift = o.narrow ? PANEL_H + 10 : 0;                 // 介面單位
   o.miniW = MINI_W;
@@ -605,8 +609,17 @@ function drawTouchButtons() {
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
     ctx.fillStyle = b.active ? 'rgba(255,214,90,.45)' : 'rgba(16,18,24,.7)'; ctx.fill();
     ctx.lineWidth = 3; ctx.strokeStyle = b.on ? '#ffd65a' : 'rgba(255,255,255,.5)'; ctx.stroke();
-    ctx.font = font(b.small ? 13 : 15, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#fff'; ctx.fillText(b.label, b.x, b.y + 1);
+    if (b.primary && b.on) { ctx.lineWidth = 4; ctx.strokeStyle = '#ffd65a'; ctx.stroke(); }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+    const n = [...b.label].length;
+    if (b.primary && n > 3) {
+      const half = Math.ceil(n / 2), chars = [...b.label];
+      ctx.font = font(15, true);
+      ctx.fillText(chars.slice(0, half).join(''), b.x, b.y - 9); ctx.fillText(chars.slice(half).join(''), b.x, b.y + 10);
+    } else {
+      ctx.font = font(b.small ? 13 : b.primary ? (n > 2 ? 17 : 20) : 15, true);
+      ctx.fillText(b.label, b.x, b.y + 1);
+    }
   }
   ctx.globalAlpha = 1;
   ctx.restore();

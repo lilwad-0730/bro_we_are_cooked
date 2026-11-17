@@ -750,4 +750,7 @@ function render() {
   drawTouchButtons();
   drawJoystick();
   drawRotateHint();
+  ctx.setTransform(UI_SCALE, 0, 0, UI_SCALE, 0, 0);
+  tutorialPanel();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 }

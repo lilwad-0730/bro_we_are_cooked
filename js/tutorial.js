@@ -198,20 +198,46 @@ function wrapText(s, maxW, size) {
   return out;
 }
 
-function tutorialHUD() {
+// 教學說明面板：最後才畫，蓋在觸控按鈕、搖桿等所有東西上面（手機上提示文字才不會被擋住）
+function tutorialPanel() {
+  if (!G.tutorial || G.state !== 'play' || G.paused || UI.help) return;
   const T = G.tutorial, st = TUT_STEPS[T.i];
+  // 換到新的一步時自動展開
+  if (T.shownI !== T.i) { T.shownI = T.i; T.folded = false; }
   // 說明面板：放在事件紀錄的位置（教學中不顯示事件紀錄）
   const w = Math.max(200, L.logW), x = UW - w - 6, y = L.logY;
+  // 收起時只留標題列：手機上面板會蓋到右側的觸控按鈕，點一下面板可收起／展開
+  if (T.folded) {
+    UI.tutRect = { x, y, w, h: 26 };
+    panel(x, y, w, 26, 0.9);
+    ctx.strokeStyle = 'rgba(255,214,90,.7)'; ctx.lineWidth = 1.5; rr(ctx, x, y, w, 26, 6); ctx.stroke();
+    text(ctx, st.title, x + 10, y + 13, { size: 14, bold: true, color: '#ffd65a' });
+    text(ctx, '▼ 點一下展開', x + w - 10, y + 13, { size: 11, align: 'right', color: '#bbb' });
+    return;
+  }
   const body = wrapText(keyText(st.text), w - 20, 13);
   const foot = keyText(st.info ? (st.final ? '' : 'Enter 繼續') : (st.done && st.done() ? '完成！' : ''));
-  const h = 34 + body.length * 19 + (foot ? 22 : 6);
+  const h = 34 + body.length * 19 + (foot ? 22 : 6) + (touchUI() ? 14 : 0);
+  UI.tutRect = { x, y, w, h };
   panel(x, y, w, h, 0.9);
   ctx.strokeStyle = 'rgba(255,214,90,.7)'; ctx.lineWidth = 1.5; rr(ctx, x, y, w, h, 6); ctx.stroke();
   text(ctx, '教學 ' + (T.i + 1) + '／' + TUT_STEPS.length, x + w - 10, y + 15, { size: 11, align: 'right', color: '#bbb' });
   text(ctx, st.title, x + 10, y + 16, { size: 16, bold: true, color: '#ffd65a' });
   body.forEach((l, i) => text(ctx, l, x + 10, y + 42 + i * 19, { size: 13, color: '#eee' }));
-  if (foot) text(ctx, foot, x + w - 10, y + h - 12, { size: 13, bold: true, align: 'right', color: st.info ? '#ffd27a' : '#9f9' });
+  if (foot) text(ctx, foot, x + w - 10, y + h - 12 - (touchUI() ? 14 : 0), { size: 13, bold: true, align: 'right', color: st.info ? '#ffd27a' : '#9f9' });
+  if (touchUI()) text(ctx, '▲ 點一下收起', x + 10, y + h - 10, { size: 11, color: '#999' });
+}
 
+// 點教學面板：收起／展開（手機上讓被蓋住的按鈕可以用）
+function tapTutorialPanel(u) {
+  const r = UI.tutRect;
+  if (!G.tutorial || !r || G.paused || UI.help || !inRect(u, r)) return false;
+  G.tutorial.folded = !G.tutorial.folded;
+  return true;
+}
+
+// 目標在畫面外時的邊緣箭頭（畫在面板下面）
+function tutorialHUD() {
   // 目標在畫面外時，在畫面邊緣畫箭頭
   const tg = tutorialTarget();
   if (!tg) return;

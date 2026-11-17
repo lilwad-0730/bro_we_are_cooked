@@ -240,6 +240,7 @@ function onTouchStart(e) {
     const p = { x: t.clientX, y: t.clientY }, u = { x: p.x / UI_SCALE, y: p.y / UI_SCALE };
     if (tapMenu(u)) return;
     if (G.paused) { tapPause(u); return; }
+    if (tapTutorialPanel(u)) continue;   // 教學面板蓋在按鈕上面，點面板優先
     const b = buttonAt(p);
     if (b) { b.run(); continue; }
     UI.mouse.x = p.x; UI.mouse.y = p.y;
@@ -278,6 +279,7 @@ cv.addEventListener('mousedown', e => {
   const u = uiMouse();
   if (tapMenu(u)) return;
   if (G.paused) { tapPause(u); return; }
+  if (tapTutorialPanel(u)) return;
   if (startBagDrag(u)) return;
   tapMenuItem(u);
 });

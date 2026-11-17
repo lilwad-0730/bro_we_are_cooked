@@ -181,7 +181,7 @@ function drawFx() {
 }
 
 function drawFog() {
-  if (G.reveal) return;
+  if (G.reveal || !fogC.width || !fogC.height) return;   // 視窗大小為 0（例如隱藏中）時跳過，避免整個遊戲迴圈中斷
   const z = cam.zoom;
   fctx.setTransform(1, 0, 0, 1, 0, 0);
   fctx.globalCompositeOperation = 'source-over';
@@ -274,7 +274,8 @@ function drawStaticLayer() {
 function drawDynamicStations() {
   for (const s of G.stations) {
     const mine = s.team === 0;
-    if (!mine && !seen(s)) { if (s.type !== 'pass' && s.type !== 'tool' && s.type !== 'glove') text(ctx, '?', s.x, s.y, { size: 32, bold: true, align: 'center', color: 'rgba(255,255,255,.5)' }); continue; }
+    // 半開放廚房：牆上的火爐狀態雙方都看得到（使用者指定），讓對手知道能不能去關火
+    if (!mine && !seen(s) && !s.wall) { if (s.type !== 'pass' && s.type !== 'tool' && s.type !== 'glove') text(ctx, '?', s.x, s.y, { size: 32, bold: true, align: 'center', color: 'rgba(255,255,255,.5)' }); continue; }
     if (s.type === 'storage') s.items.forEach((k, i) => drawItemIcon(ctx, 'raw', k, s.x - 30 + i * 30, s.y + 2, 14));
     if (s.type === 'prep' && s.recipe) {
       drawItemIcon(ctx, 'semi', s.recipe, s.x, s.y + 2, 14);
@@ -288,7 +289,13 @@ function drawDynamicStations() {
         drawItemIcon(ctx, s.done ? 'dish' : 'semi', s.cooking, s.x, s.y + 2, 14);
         if (!s.done) bar(ctx, s.x, s.y + 18, 54, s.progress / r.cook, s.flipped ? '#ff5d5d' : '#6fdc6f');
         if (s.flipped) text(ctx, '熄火！', s.x, s.y - 62, { size: 28, bold: true, align: 'center', color: '#ff6b6b', stroke: '#000' });
-        if (s.beingFlipped !== null && s.beingFlipped !== undefined) text(ctx, '正在被關火', s.x, s.y - 62, { size: 26, bold: true, align: 'center', color: '#ffb36b', stroke: '#000' });
+        // 正在被關火：關火沒有通知，只有看得到關火的人時才顯示
+        const fl = s.beingFlipped !== null && s.beingFlipped !== undefined ? G.chars[s.beingFlipped] : null;
+        if (fl && (fl.team === 0 || seen(fl))) text(ctx, '正在被關火', s.x, s.y - 62, { size: 26, bold: true, align: 'center', color: '#ffb36b', stroke: '#000' });
+        else if (s.wall && !s.done && !s.flipped) {
+          const tag = s.flippedOnce ? '已關過' : (mine ? '可被關火' : '可關火');
+          text(ctx, tag, s.x, s.y - 62, { size: 22, bold: true, align: 'center', color: s.flippedOnce ? '#aaa' : (mine ? '#ffb36b' : '#ffe066'), stroke: '#000' });
+        }
         if (s.done) text(ctx, r.ability ? '可食用' : '可取餐', s.x, s.y + 38, { size: 22, bold: true, align: 'center', color: '#9f9', stroke: '#000' });
       }
     }
@@ -477,6 +484,13 @@ function drawMinimap() {
   ctx.fillStyle = '#8a8e99'; for (const r of G.walls) ctx.fillRect(r.x, r.y, r.w, r.h);
   ctx.fillStyle = '#3f8a45'; for (const b of G.bushes || []) ctx.fillRect(b.x, b.y, b.w, b.h);
   for (const n of G.nodes) { ctx.beginPath(); ctx.arc(n.x, n.y, 22, 0, Math.PI * 2); ctx.fillStyle = ING[n.type].color; ctx.fill(); }
+  // 牆上火爐：灰＝空、綠＝烹調中可關火、暗綠＝烹調中已關過、紅＝熄火、黃＝可取餐
+  for (const s of G.stations) {
+    if (!s.wall) continue;
+    const col = !s.cooking ? '#777' : s.flipped ? '#ff4d4d' : s.done ? '#ffd23f' : s.flippedOnce ? '#3f7a3f' : '#59e05a';
+    ctx.fillStyle = col; ctx.fillRect(s.x - 75, s.y - 75, 150, 150);
+    ctx.lineWidth = 18; ctx.strokeStyle = G.teams[s.team].color; ctx.strokeRect(s.x - 75, s.y - 75, 150, 150);
+  }
   for (const c of G.chars) {
     if (c.team !== 0 && !seen(c)) continue;
     ctx.beginPath(); ctx.arc(c.x, c.y, c === player() && !c.ai ? 44 : 34, 0, Math.PI * 2);

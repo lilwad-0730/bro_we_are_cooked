@@ -111,10 +111,10 @@ function tryBuild(rng) {
     bushes.push(b); k++;
   }
   G.bushes = bushes.flatMap(b => [b, mirrorRect(b)]);
-  for (const r of rocks) G.walls.push(r, mirrorRect(r));
+  for (const r of rocks) { const m = mirrorRect(r); r.rock = m.rock = true; G.walls.push(r, m); }
   if (rng() < 0.6) {   // 中線偶爾有一塊大石頭
     const h = R(80, 160), y = R(WILD.y + 40, WILD.y + WILD.h - 40 - h);
-    G.walls.push(rect(W / 2 - 50, y, 100, h));
+    G.walls.push({ ...rect(W / 2 - 50, y, 100, h), rock: true });
   }
   G.solids = G.walls.concat(G.bounds);
 

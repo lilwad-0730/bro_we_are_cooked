@@ -83,17 +83,10 @@ const seen = p => G.reveal || canSee(0, p);
 
 // ---------------------------------------------------------------- 圖示
 function drawItemIcon(c, kind, key, x, y, s = 13) {
-  if (kind === 'raw') {
-    c.beginPath(); c.arc(x, y, s, 0, Math.PI * 2); c.fillStyle = ING[key].color; c.fill();
-    c.lineWidth = 2; c.strokeStyle = '#1b1b1b'; c.stroke();
-    text(c, ING[key].ch, x, y + 1, { size: s * 1.05, bold: true, align: 'center', color: '#111' });
-  } else if (kind === 'semi') {
-    rr(c, x - s, y - s, s * 2, s * 2, 5); c.fillStyle = '#f0c75e'; c.fill(); c.lineWidth = 2; c.strokeStyle = '#5a4210'; c.stroke();
-    text(c, RECIPES[key].short, x, y + 1, { size: s * 1.05, bold: true, align: 'center', color: '#3a2a00' });
-  } else {
-    c.beginPath(); c.arc(x, y, s + 2, 0, Math.PI * 2); c.fillStyle = '#fafafa'; c.fill(); c.lineWidth = 2; c.strokeStyle = '#d48a2c'; c.stroke();
-    text(c, RECIPES[key].short, x, y + 1, { size: s * 1.05, bold: true, align: 'center', color: '#a8540c' });
-  }
+  // 美術見 art.js：食材是本體造型、半成品是砧板上的原料、料理是盛好的菜
+  if (kind === 'raw') drawIngredient(c, key, x, y, s * 1.15);
+  else if (kind === 'semi') drawSemi(c, key, x, y, s * 1.15);
+  else drawDish(c, key, x, y, s * 1.2);
 }
 
 function bar(c, x, y, w, frac, color, h = 5) {
@@ -215,9 +208,12 @@ function drawStation(s) {
   const tm = G.teams[s.team];
   const base = s.quick ? { w: 60, h: 52, label: '就地鍋', fill: '#3c3c42' } : s.wall ? { ...STATION_LOOK.stove, label: '火爐' } : STATION_LOOK[s.type];
   const L = s.desk ? { ...base, w: 52, h: 52 } : base;   // 桌上的設施縮成桌子寬度
-  rr(ctx, s.x - L.w / 2, s.y - L.h / 2, L.w, L.h, 6); ctx.fillStyle = L.fill; ctx.fill();
-  ctx.lineWidth = 3; ctx.strokeStyle = tm.color; ctx.stroke();
-  if (s.type === 'stove') { ctx.beginPath(); ctx.arc(s.x, s.y + 2, 15, 0, Math.PI * 2); ctx.strokeStyle = '#222'; ctx.lineWidth = 4; ctx.stroke(); }
+  if (s.quick) drawWokArt(ctx, s.x, s.y, L.w, L.h, tm.color);
+  else if (s.type === 'stove') drawStoveArt(ctx, s.x, s.y, L.w, L.h, tm.color, { pot: !!s.cooking, lit: !!s.cooking && !s.done && !s.flipped });
+  else if (s.type === 'storage') drawCrateArt(ctx, s.x, s.y, L.w, L.h, tm.color);
+  else if (s.type === 'prep') drawPrepArt(ctx, s.x, s.y, L.w, L.h, tm.color);
+  else if (s.type === 'pass') drawPassArt(ctx, s.x, s.y, L.w, L.h, tm.color);
+  else { rr(ctx, s.x - L.w / 2, s.y - L.h / 2, L.w, L.h, 6); ctx.fillStyle = L.fill; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = tm.color; ctx.stroke(); }
   text(ctx, L.label, s.x, s.y - L.h / 2 - 15, { size: s.desk ? 18 : 24, bold: true, align: 'center', color: '#f3f3f3', stroke: 'rgba(0,0,0,.8)' });
 }
 
@@ -225,7 +221,7 @@ function drawStation(s) {
 function drawDesks() {
   for (const tm of G.teams) {
     const d = tm.desk;
-    rr(ctx, d.x, d.y, d.w, d.h, 8); ctx.fillStyle = '#5a5246'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = tm.color; ctx.stroke();
+    drawDeskArt(ctx, d, tm.color);
   }
   for (const s of G.stations) if (s.desk) drawStation(s);
 }
@@ -251,11 +247,7 @@ function drawStaticLayer() {
     ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 2;
     for (let x = r.x + 20; x < r.x + r.w; x += 60) { ctx.beginPath(); ctx.moveTo(x, r.y + r.h / 2); ctx.lineTo(x + 24, r.y + r.h / 2 - 4); ctx.stroke(); }
   }
-  for (const r of G.walls) {
-    ctx.fillStyle = '#6f727c'; ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.fillStyle = '#8a8e99'; ctx.fillRect(r.x, r.y, r.w, Math.min(8, r.h));
-    ctx.strokeStyle = '#2a2c31'; ctx.lineWidth = 2; ctx.strokeRect(r.x, r.y, r.w, r.h);
-  }
+  for (const r of G.walls) { if (r.rock) drawRock(ctx, r); else drawBrickWall(ctx, r); }
   for (const tm of G.teams) for (const dr of tm.doors) {
     ctx.save(); ctx.translate(dr.x, dr.y);
     ctx.beginPath(); ctx.moveTo(0, -dr.h / 2 - 10); ctx.lineTo(44, 0); ctx.lineTo(0, dr.h / 2 + 10); ctx.lineTo(-44, 0); ctx.closePath();
@@ -276,7 +268,7 @@ function drawDynamicStations() {
     const mine = s.team === 0;
     // 半開放廚房：牆上的火爐狀態雙方都看得到（使用者指定），讓對手知道能不能去關火
     if (!mine && !seen(s) && !s.wall) { if (s.type !== 'pass' && s.type !== 'tool' && s.type !== 'glove') text(ctx, '?', s.x, s.y, { size: 32, bold: true, align: 'center', color: 'rgba(255,255,255,.5)' }); continue; }
-    if (s.type === 'storage') s.items.forEach((k, i) => drawItemIcon(ctx, 'raw', k, s.x - 30 + i * 30, s.y + 2, 14));
+    if (s.type === 'storage') s.items.forEach((k, i) => drawItemIcon(ctx, 'raw', k, s.x + (i - 1) * 17, s.y + 2, 9));
     if (s.type === 'prep' && s.recipe) {
       drawItemIcon(ctx, 'semi', s.recipe, s.x, s.y + 2, 14);
       if (!s.done) bar(ctx, s.x, s.y + 18, 60, s.progress / (RECIPES[s.recipe].ings.length * CFG.PREP_PER_ING), '#f0c75e');
@@ -286,7 +278,9 @@ function drawDynamicStations() {
       if (s.quick && s.raw) { drawItemIcon(ctx, 'raw', 'veg', s.x, s.y + 2, 14); bar(ctx, s.x, s.y + 18, 50, s.prepP / (CFG.PREP_PER_ING), '#f0c75e'); }
       if (s.cooking) {
         const r = RECIPES[s.cooking];
-        drawItemIcon(ctx, s.done ? 'dish' : 'semi', s.cooking, s.x, s.y + 2, 14);
+        // 煮好：顯示盛好的料理；烹調中：鍋裡看得到正在煮的原料
+        if (s.done) drawItemIcon(ctx, 'dish', s.cooking, s.x, s.y + 2, 14);
+        else { const ig = r.ings; ig.forEach((k, i) => drawIngredient(ctx, k, s.x + (ig.length === 1 ? 0 : -6 + i * 12 / (ig.length - 1)), s.y - 1 + (i % 2 ? 3 : -2), 6.5)); }
         if (!s.done) bar(ctx, s.x, s.y + 18, 54, s.progress / r.cook, s.flipped ? '#ff5d5d' : '#6fdc6f');
         if (s.flipped) text(ctx, '熄火！', s.x, s.y - 62, { size: 28, bold: true, align: 'center', color: '#ff6b6b', stroke: '#000' });
         // 正在被關火：關火沒有通知，只有看得到關火的人時才顯示
@@ -302,13 +296,10 @@ function drawDynamicStations() {
   }
   // 食材怪物：視野內才看得到牠的狀態；血條歸零時，打出最後一擊的隊伍拿到食材
   for (const n of G.nodes) {
-    if (!seen(n)) { text(ctx, ING[n.type].ch, n.x, n.y + 1, { size: 28, align: 'center', color: 'rgba(255,255,255,.45)' }); continue; }
+    if (!seen(n)) { ctx.save(); ctx.globalAlpha = 0.3; drawIngredient(ctx, n.type, n.x, n.y, 18); ctx.restore(); continue; }
     if (n.hp > 0) {
       const bob = Math.sin(performance.now() / 300 + n.id) * 2;
-      ctx.beginPath(); ctx.arc(n.x, n.y + bob, 22, 0, Math.PI * 2); ctx.fillStyle = ING[n.type].color; ctx.fill();
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.stroke();
-      for (const ex of [-7, 7]) { ctx.beginPath(); ctx.arc(n.x + ex, n.y - 6 + bob, 4, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.beginPath(); ctx.arc(n.x + ex, n.y - 5 + bob, 2, 0, Math.PI * 2); ctx.fillStyle = '#111'; ctx.fill(); }
-      text(ctx, ING[n.type].ch, n.x, n.y + 8 + bob, { size: 18, bold: true, align: 'center', color: '#111', flat: true });
+      drawMonster(ctx, n, n.x, n.y + bob, 26);
       bar(ctx, n.x, n.y - 38, 50, n.hp / CFG.MONSTER_HP, n.hp <= CFG.MONSTER_HP * 0.3 ? '#ff6b6b' : '#7ee07e', 7);
     } else text(ctx, Math.ceil(n.respawn) + '', n.x, n.y + 1, { size: 26, bold: true, align: 'center', color: '#aaa' });
   }

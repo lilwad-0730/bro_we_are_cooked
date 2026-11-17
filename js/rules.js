@@ -51,6 +51,8 @@ function act(c, label, dur, onDone, o = {}) {
   c.action = { label, dur, t: 0, onDone, check: o.check, tick: o.tick, slow: !!o.slow, lock: o.lock !== false, onCancel: o.onCancel, ok: false, cancelled: false, target: o.target, range: o.range };
   return true;
 }
+// 範圍內可移動：離設施 ACT_RANGE 以內移動都不會中斷，走出範圍才中斷（使用者指定）
+const inRange = (c, s, chk, extra = {}) => ({ lock: false, target: s, range: CFG.ACT_RANGE, ...extra, check: () => near(c, s, CFG.ACT_RANGE + 8) && chk() });
 function cancelAction(c, why) {
   const a = c.action;
   if (!a) return;
@@ -158,7 +160,7 @@ function startDeposit(c) {
   return act(c, '入庫', CFG.DEPOSIT, () => {
     if (fromHand) c.hand = null; else c.bag.splice(c.bag.indexOf(it), 1);
     s.items.push(it.key);
-  }, { check: () => s.items.length < CFG.STORAGE_CAP && (fromHand ? c.hand === it : c.bag.includes(it)) });
+  }, inRange(c, s, () => s.items.length < CFG.STORAGE_CAP && (fromHand ? c.hand === it : c.bag.includes(it))));
 }
 
 function startTakeOut(c) {
@@ -166,7 +168,8 @@ function startTakeOut(c) {
   if (busy(c)) return '動作中';
   if (c.hand) return '雙手只能拿一件';
   if (!s.items.length) return '倉庫是空的';
-  return act(c, '取出原料', CFG.TAKE, () => { const k = s.items.pop(); if (k) c.hand = { id: ++G.itemSeq, kind: 'raw', key: k, team: c.team, life: CFG.GROUND_LIFE }; });
+  if (!near(c, s)) return '離倉庫太遠';
+  return act(c, '取出原料', CFG.TAKE, () => { const k = s.items.pop(); if (k) c.hand = { id: ++G.itemSeq, kind: 'raw', key: k, team: c.team, life: CFG.GROUND_LIFE }; }, inRange(c, s, () => !c.hand && s.items.length > 0));
 }
 
 const hasAll = (pool, ings) => { const p = pool.slice(); for (const k of ings) { const i = p.indexOf(k); if (i < 0) return false; p.splice(i, 1); } return true; };
@@ -216,7 +219,7 @@ function startTakeSemi(c, p) {
   return act(c, '取半成品', CFG.TAKE, () => {
     c.hand = { id: ++G.itemSeq, kind: 'semi', key: p.recipe, team: c.team, life: CFG.GROUND_LIFE };
     p.recipe = null; p.done = false; p.progress = 0;
-  }, { check: () => p.done && !c.hand });
+  }, inRange(c, p, () => p.done && !c.hand));
 }
 
 const stoveEmpty = s => !s.cooking && !(s.quick && s.raw);
@@ -232,7 +235,7 @@ function startPlace(c, s) {
   return act(c, it.kind === 'semi' ? '放鍋' : '放回成品', CFG.PLACE, () => {
     c.hand = null;
     Object.assign(s, { cooking: it.key, progress: it.kind === 'dish' ? RECIPES[it.key].cook : 0, done: it.kind === 'dish', doneAt: G.time, flipped: false, flippedOnce: false });
-  }, { check: () => c.hand === it && stoveEmpty(s) });
+  }, inRange(c, s, () => c.hand === it && stoveEmpty(s)));
 }
 
 function startTakeDish(c, s) {
@@ -243,7 +246,7 @@ function startTakeDish(c, s) {
   return act(c, '取成品', CFG.TAKE, () => {
     c.hand = { id: ++G.itemSeq, kind: 'dish', key: s.cooking, team: c.team, life: CFG.GROUND_LIFE };
     Object.assign(s, { cooking: null, progress: 0, done: false, flipped: false, flippedOnce: false });
-  }, { check: () => s.done && !c.hand });
+  }, inRange(c, s, () => s.done && !c.hand));
 }
 
 function canEat(c, rk) {
@@ -272,7 +275,7 @@ function startQuickDeposit(c, s) {
   if (!s.quick || s.team !== c.team) return '不是自家就地鍋';
   if (!stoveEmpty(s)) return '就地鍋正在使用';
   if (!c.hand || c.hand.key !== 'veg' || c.hand.kind !== 'raw') return '要拿一份蔬菜';
-  return act(c, '投入蔬菜', CFG.DEPOSIT, () => { c.hand = null; s.raw = true; s.prepP = 0; }, { check: () => c.hand && c.hand.key === 'veg' && stoveEmpty(s) });
+  return act(c, '投入蔬菜', CFG.DEPOSIT, () => { c.hand = null; s.raw = true; s.prepP = 0; }, inRange(c, s, () => c.hand && c.hand.key === 'veg' && stoveEmpty(s)));
 }
 function startQuickPrep(c, s) {
   if (busy(c)) return '動作中';
@@ -325,20 +328,17 @@ function startFlip(c, s) {
     s.progress = Math.max(0, s.progress - CFG.FLIP_SETBACK);
     c.flipCd = CFG.FLIP_CD;
     if (c.team === 0 || G.spectate) { log(c.team, c.name + ' 關掉了' + G.teams[s.team].name + '火爐的火（' + RECIPES[s.cooking].name + '）'); floatText(s.x, s.y - 30, '熄火！', '#ff7070'); }
-  }, {
-    check: () => {
-      if (!near(c, s, CFG.INTERACT + 10) || !flippable(s)) return false;
-      if (guardNear(s)) { log(s.team, '守方趕到，打斷了關火'); return false; }
-      return true;
-    },
-    onCancel: () => { s.beingFlipped = null; c.flipCd = CFG.FLIP_CD; },
-  });
+  }, inRange(c, s, () => {
+    if (!flippable(s)) return false;
+    if (guardNear(s)) { log(s.team, '守方趕到，打斷了關火'); return false; }
+    return true;
+  }, { onCancel: () => { s.beingFlipped = null; c.flipCd = CFG.FLIP_CD; } }));
 }
 function startFix(c, s) {
   if (busy(c)) return '動作中';
   if (s.team !== c.team || !s.flipped) return '火沒有被關';
   if (!near(c, s)) return '太遠';
-  return act(c, '開火', CFG.FIX, () => { s.flipped = false; log(c.team, c.name + ' 重新開火'); }, { check: () => s.flipped });
+  return act(c, '開火', CFG.FIX, () => { s.flipped = false; log(c.team, c.name + ' 重新開火'); }, inRange(c, s, () => s.flipped));
 }
 
 // ---------------------------------------------------------------- 打暈

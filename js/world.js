@@ -91,7 +91,8 @@ function tryBuild(rng) {
   };
   // 每局完全隨機：每種食材的位置沒有固定規律（硬殼不再固定在中線、蔬菜不再固定在家門口），玩家無法背地圖【使用者指定】
   const left = [];
-  const types = ['veg', 'veg', 'mush', 'mush', 'fish', 'fish', 'shell', 'shell'];
+  // 每邊 5 隻（使用者指定減少；原為 8 隻）：四種各一隻，再隨機多一隻蔬菜、菇類或魚類
+  const types = ['veg', 'mush', 'fish', 'shell', ['veg', 'mush', 'fish'][Math.floor(rng() * 3)]];
   for (let i = types.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [types[i], types[j]] = [types[j], types[i]]; }
   for (const type of types) {
     const s = freeSpot(half.x, half.x + half.w, 160);

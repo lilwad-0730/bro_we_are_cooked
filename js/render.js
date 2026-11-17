@@ -400,7 +400,8 @@ function drawOrders() {
   const me = G.teams[0], foe = G.teams[1], orders = teamOrders(0);
   const showInfo = L.ordPreview;
   panel(x, y, cw + 8, 24 + 3 * (ch + gap) + (showInfo ? 34 : 0));
-  text(ctx, '我方訂單　第 ' + (me.round + 1) + ' 輪', x + 8, y + 13, { size: 13, bold: true, color: '#ddd' });
+  text(ctx, '第 ' + (me.round + 1) + ' 輪訂單', x + 8, y + 13, { size: 13, bold: true, color: '#ddd' });
+  if (!G.tutorial) text(ctx, '整輪+' + roundBonus(G.time - me.roundAt), x + cw + 2, y + 13, { size: 12, bold: true, align: 'right', color: '#ffd27a' });
   const mineA = activeRecipes(0);
   orders.forEach((o, i) => {
     const cx = x + 4, cy = y + 24 + i * (ch + gap);
@@ -615,7 +616,7 @@ function drawOverlay() {
     block([
       { t: msg, size: 40, bold: true, color: G.winner === 0 ? a.color : (G.winner === 1 ? b.color : '#fff'), gap: 48 },
       { t: '我方 ' + a.score + '　：　' + b.score + ' 敵方', size: 26, bold: true, gap: 36 },
-      { t: '我方完成 ' + a.round + ' 輪、敵方完成 ' + b.round + ' 輪' + (a.score === b.score && a.score > 0 ? '（同分：較早完成最後一次得分者勝）' : ''), size: 15, color: '#ccc', gap: 30 },
+      { t: '我方完成 ' + a.round + ' 輪、' + (a.dishes || 0) + ' 道；敵方完成 ' + b.round + ' 輪、' + (b.dishes || 0) + ' 道' + (G.tieBy ? '（' + G.tieBy + '）' : ''), size: 15, color: '#ccc', gap: 30 },
       { t: '點擊螢幕再玩一局', size: 22, bold: true, color: '#ffd27a', blink: true, gap: 38 },
       { t: '教學關卡', size: 16, button: true, gap: 40 },
       { t: '鍵盤：Enter 再玩　T 教學　V 觀戰', size: 12, color: '#999', gap: 18 },

@@ -392,6 +392,8 @@ function teamOrders(t) {
   return roundDef(tm.round).map(k => ({ key: k, score: Math.round(RECIPES[k].score * mult), done: tm.done.includes(k) }));
 }
 const openOrders = t => teamOrders(t).filter(o => !o.done).map(o => o.key);
+// 一輪的速度獎勵：完成得越快分數越高（秒數不同，分數就不同，減少同分）【自行修改】
+const roundBonus = secs => Math.round(CFG.ROUND_BONUS * CFG.ROUND_PAR / Math.max(60, secs));
 function startRound(tm) {
   tm.done = []; tm.roundAt = G.time;
   log(tm.id, tm.name + '進入第 ' + (tm.round + 1) + ' 輪：' + roundDef(tm.round).map(k => RECIPES[k].name).join('、'));
@@ -400,11 +402,17 @@ function completeOrder(key, c) {
   const tm = team(c);
   const o = teamOrders(c.team).find(o => o.key === key && !o.done);
   if (!o) return false;
-  tm.done.push(key);
+  tm.done.push(key); tm.dishes = (tm.dishes || 0) + 1;
   tm.score += o.score; tm.lastScoreAt = G.time;
   log(c.team, c.name + ' 交出 ' + RECIPES[key].name + '，+' + o.score);
   floatText(c.x, c.y - 30, '+' + o.score, tm.color);
-  if (tm.done.length >= 3) { tm.round++; startRound(tm); }
+  if (tm.done.length >= 3) {
+    const secs = G.time - tm.roundAt, bonus = roundBonus(secs);
+    tm.score += bonus;
+    log(c.team, tm.name + '完成第 ' + (tm.round + 1) + ' 輪（' + Math.round(secs) + ' 秒），速度獎勵 +' + bonus);
+    floatText(c.x, c.y - 70, '整輪完成 +' + bonus, '#ffd27a');
+    tm.round++; startRound(tm);
+  }
   return true;
 }
 
@@ -440,9 +448,12 @@ function updateWorld(dt) {
 function endMatch() {
   G.state = 'end';
   const [a, b] = G.teams;
+  // 決勝順序【自行修改】：總分 → 交出的菜數 → 較早完成最後一次得分
+  G.tieBy = null;
   if (a.score !== b.score) G.winner = a.score > b.score ? 0 : 1;
+  else if ((a.dishes || 0) !== (b.dishes || 0)) { G.winner = a.dishes > b.dishes ? 0 : 1; G.tieBy = '同分，交出的菜較多者勝'; }
   else if (a.score === 0 || a.lastScoreAt === b.lastScoreAt) G.winner = -1;
-  else G.winner = a.lastScoreAt < b.lastScoreAt ? 0 : 1;   // 同分：最後一次有效得分較早者勝
+  else { G.winner = a.lastScoreAt < b.lastScoreAt ? 0 : 1; G.tieBy = '同分同菜數，較早完成最後一次得分者勝'; }
 }
 
 function newMatch(seed) {
@@ -456,7 +467,7 @@ function newMatch(seed) {
   G.chars[0].ai = G.spectate;
   if (G.spectate) G.chars[0].name = '藍1';
   measureRoutes();
-  for (const tm of G.teams) { tm.round = 0; startRound(tm); }
+  for (const tm of G.teams) { tm.round = 0; tm.dishes = 0; startRound(tm); }
 }
 
 function measureRoutes() {

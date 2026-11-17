@@ -44,7 +44,7 @@ const TUT_STEPS = [
   { title: '備料', text: '到備料台，按數字 1 選「雙蔬煎盤」。備料要站著別動 4 秒；移動會中斷，但進度會保留。',
     target: () => tutTeam().preps.find(p => p.recipe === 'vm') || tutTeam().preps[0],
     done: () => tutTeam().preps.some(p => p.recipe === 'vm' && p.done) || activeRecipes(0).has('vm') && !tutTeam().preps.some(p => p.recipe === 'vm') },
-  { title: '放鍋', text: '按 E 拿起半成品，搬到廚房深處的爐台按 E 放鍋，之後會自動烹調。上牆的外壁鍋會被廚房外的對手關火，內爐比較安全。',
+  { title: '放鍋', text: '按 E 拿起半成品，搬到上牆的外壁鍋按 E 放鍋，之後會自動烹調。廚房只有外壁鍋，鍋子從牆外碰得到，烹調時要留意對手來關火。',
     target: () => (tutC().hand && tutC().hand.kind === 'semi' ? emptyStove() : tutTeam().preps.find(p => p.recipe === 'vm')),
     done: () => tutTeam().stoves.some(s => s.cooking === 'vm') },
   { title: '隔熱手套', text: '成品很燙，要戴手套才能拿。趁烹調的時候，到手套架按 E 戴上手套。',
@@ -111,7 +111,7 @@ const TUT_STEPS = [
   { title: '對手的東西不能拿', info: true,
     text: '對手掉了一份半成品，但你不能撿：對方的食材、半成品和成品都偷不走。打暈只能拖慢對手，他要倒地 3 秒，再回頭把東西撿回來。' },
   { title: '關火', info: true,
-    text: '你也可以到對手廚房外，在外壁鍋正在烹調時按 E 按住 1.5 秒關火，對方會收到警示。對手廚房深處的內爐碰不到，所以外壁鍋是「多一口鍋但有風險」的選擇。' },
+    text: '你也可以到對手廚房外，在外壁鍋正在烹調時按 E 按住 1.5 秒關火，對方會收到警示。雙方廚房都只有外壁鍋，所以每道菜都要防範被關火：派人守在鍋旁，或趁對手不在時去關他的火。' },
   { title: '教學完成！', info: true, final: true,
     text: 'Enter 開始正式對局，T 再玩一次教學，Esc 回標題。正式對局是 6 分鐘，比的是誰交出的訂單分數多。' },
 ];

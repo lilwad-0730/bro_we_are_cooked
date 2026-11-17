@@ -47,7 +47,7 @@ function runJob(c, dt) {
     }
     if (s.t === 'goto') {
       const tg = s.target || s;
-      if (dist(c, tg) <= (s.r || 30)) { c.path = null; j.i++; continue; }
+      if (dist(c, tg) <= (tg.tight ? 10 : (s.r || 30))) { c.path = null; j.i++; continue; }
       if (c.action && c.action.lock) return;
       followPath(c, tg.x, tg.y, dt);
       return;
@@ -102,7 +102,8 @@ function nearOwnKitchen(e, m) {
   const z = G.teams[e.team].zone;
   return e.x > z.x - m && e.x < z.x + z.w + m && e.y > z.y - m && e.y < z.y + z.h + m;
 }
-const acc = (c, s) => (s.wall ? { x: s.x, y: s.y + (s.team === c.team ? 32 : -32) } : s);
+// tight：外壁鍋的站位點要走到幾乎正好的位置，否則會停在互動距離外
+const acc = (c, s) => (s.wall ? { x: s.x, y: s.y + (s.team === c.team ? 32 : -32), tight: true } : s);
 
 // ---------------------------------------------------------------- 工作種類
 function pickNode(c, k) {

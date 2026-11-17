@@ -42,15 +42,15 @@ function buildMap() {
       G.stations.push(s); return s;
     };
     const tm = { id: t, ...TEAM_CFG[t], score: 0, lastScoreAt: Infinity, nextFlipCheck: 20, travel: {} };
-    // 廚房依動線排列：倉庫 → 備料台 → 爐台（旁邊手套架）→ 出餐口。
-    // 兩口內爐在廚房深處，敵人碰不到；上牆有一口外壁鍋和就地鍋，可從廚房內使用，也會被廚房外的敵人關火。
-    tm.storage = st('storage', 440, 590, { items: [] });
-    tm.preps = [st('prep', 300, 560, { recipe: null, progress: 0, done: false }), st('prep', 300, 680, { recipe: null, progress: 0, done: false })];
-    tm.stoves = [st('stove', 300, 830, cookState()), st('stove', 420, 830, cookState()), st('stove', 420, 412, { ...cookState(), wall: true })];
+    // 廚房只有兩口外壁鍋（使用者指定）：都在上牆，從廚房內使用，也會被廚房外的敵人關火，沒有安全的內爐。
+    // 動線依鍋子位置排列：右側開口進來先到倉庫，旁邊是備料台，上牆是鍋子，出餐口與手套架都靠近鍋子。
+    tm.stoves = [st('stove', 300, 412, { ...cookState(), wall: true }), st('stove', 430, 412, { ...cookState(), wall: true })];
     tm.quick = st('stove', 170, 412, { ...cookState(), quick: true, wall: true, raw: false, prepP: 0 });
-    tm.pass = st('pass', 480, 950);
-    tm.gloveRack = st('glove', 180, 830);
-    tm.guard = P(t, 360, 760);
+    tm.storage = st('storage', 470, 640, { items: [] });
+    tm.preps = [st('prep', 300, 560, { recipe: null, progress: 0, done: false }), st('prep', 300, 680, { recipe: null, progress: 0, done: false })];
+    tm.pass = st('pass', 510, 520);
+    tm.gloveRack = st('glove', 130, 560);
+    tm.guard = P(t, 365, 465);   // 守家：站在兩口外壁鍋中間，離鍋 70 像素內可打斷關火
     tm.spawn = [P(t, 180, 640), P(t, 180, 740)];
     tm.floor = t === 0 ? rect(64, 424, 492, 652) : mirrorRect(rect(64, 424, 492, 652));
     // 敵方不可進入的範圍：整個廚房（含牆與右側開口）

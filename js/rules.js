@@ -167,10 +167,10 @@ function startDeposit(c, s, key) {
   if (!fromHand && !fromBag) return '沒有原料可以放';
   if (s.items.length >= capOf(s)) return name + '已滿（最多 ' + capOf(s) + ' 份原料）';
   const it = fromHand ? c.hand : fromBag;
-  return act(c, '放上' + name, CFG.DEPOSIT, () => {
-    if (fromHand) c.hand = null; else c.bag.splice(c.bag.indexOf(it), 1);
-    s.items.push(it.key);
-  }, inRange(c, s, () => roomOn(s) && (fromHand ? c.hand === it : c.bag.includes(it))));
+  // 立即完成，沒有等待時間（使用者指定）
+  if (fromHand) c.hand = null; else c.bag.splice(c.bag.indexOf(it), 1);
+  s.items.push(it.key);
+  return true;
 }
 
 // 從桌面或砧板拿回一份原料（可指定哪一種，否則拿最後放上去的）
@@ -182,10 +182,9 @@ function startTakeOut(c, s, key) {
   if (i < 0) return '這裡沒有' + (key ? ING[key].name : '原料');
   if (!near(c, s)) return '太遠';
   const k = s.items[i];
-  return act(c, '拿起原料', CFG.TAKE, () => {
-    const j = s.items.lastIndexOf(k);
-    if (j >= 0) { s.items.splice(j, 1); c.hand = { id: ++G.itemSeq, kind: 'raw', key: k, team: c.team, life: CFG.GROUND_LIFE }; }
-  }, inRange(c, s, () => !c.hand && s.items.includes(k)));
+  // 立即完成，沒有等待時間（使用者指定）
+  s.items.splice(i, 1); c.hand = { id: ++G.itemSeq, kind: 'raw', key: k, team: c.team, life: CFG.GROUND_LIFE };
+  return true;
 }
 
 const hasAll = (pool, ings) => { const p = pool.slice(); for (const k of ings) { const i = p.indexOf(k); if (i < 0) return false; p.splice(i, 1); } return true; };
@@ -226,10 +225,10 @@ function startTakeSemi(c, p) {
   if (!p.done) return '還沒備好料';
   if (c.hand) return '雙手只能拿一件';
   if (!near(c, p)) return '太遠';
-  return act(c, '取半成品', CFG.TAKE, () => {
-    c.hand = { id: ++G.itemSeq, kind: 'semi', key: p.recipe, team: c.team, life: CFG.GROUND_LIFE };
-    p.recipe = null; p.done = false; p.progress = 0;
-  }, inRange(c, p, () => p.done && !c.hand));
+  // 立即完成，沒有等待時間（使用者指定）
+  c.hand = { id: ++G.itemSeq, kind: 'semi', key: p.recipe, team: c.team, life: CFG.GROUND_LIFE };
+  p.recipe = null; p.done = false; p.progress = 0;
+  return true;
 }
 
 const stoveEmpty = s => !s.cooking && !(s.quick && s.raw);
@@ -305,10 +304,10 @@ function startSubmit(c) {
   if (!c.hand || c.hand.kind !== 'dish') return '手上要拿成品';
   if (!near(c, ps)) return '離出餐口太遠';
   const it = c.hand;
-  return act(c, '交餐', CFG.SUBMIT, () => {
-    if (!openOrders(c.team).includes(it.key)) { say(c, '這一輪沒有「' + RECIPES[it.key].name + '」或已經交過了，料理保留'); log(c.team, c.name + ' 交餐失敗：這一輪沒有' + RECIPES[it.key].name); return; }
-    c.hand = null; completeOrder(it.key, c);
-  }, { check: () => c.hand === it });
+  // 立即完成，沒有等待時間（使用者指定）
+  if (!openOrders(c.team).includes(it.key)) { log(c.team, c.name + ' 交餐失敗：這一輪沒有' + RECIPES[it.key].name); return '這一輪沒有「' + RECIPES[it.key].name + '」或已經交過了，料理保留'; }
+  c.hand = null; completeOrder(it.key, c);
+  return true;
 }
 
 function startTool(c, tool) {

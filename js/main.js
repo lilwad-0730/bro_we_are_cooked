@@ -96,7 +96,7 @@ function playerKey(code) {
     if (m) r = m.run();
   } else if (code === 'KeyQ') r = dropHand(c);
   else if (code === 'KeyR') r = startStoreBag(c, 'hand');
-  else if (code === 'Space') { const m = toWorld(UI.mouse.x, UI.mouse.y); r = startStun(c, UI.touchMode ? c.face : Math.atan2(m.y - c.y, m.x - c.x)); }
+  else if (code === 'Space') { const m = toWorld(UI.mouse.x, UI.mouse.y); r = startStun(c, UI.touchMode ? touchAim(c) : Math.atan2(m.y - c.y, m.x - c.x)); }
   if (typeof r === 'string') say(c, r);
 }
 
@@ -140,28 +140,106 @@ addEventListener('blur', () => keys.clear());
 const inRect = (p, r) => r && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 cv.addEventListener('mousemove', e => { UI.mouse.x = e.clientX; UI.mouse.y = e.clientY; UI.touchMode = false; });
 
-// ---------------------------------------------------------------- 觸控搖桿
+// ---------------------------------------------------------------- 觸控操作
 // 左半邊：手指按下的位置就是錨點，往不同方向拖就移動；放開手指取消錨點，下次按下再重新放置。
-// 右半邊：保留給動作按鈕；教學說明步驟中點一下等於 Enter。標題與結算畫面點任何地方開始遊戲。
+// 右半邊：點一下等於互動鍵 E（教學說明步驟中等於 Enter）。
+// 右下角按鈕：打暈、放下、收包、背包；右上角：暫停。選單項目可以直接點。
 const JOY_R = 60, JOY_DEAD = 8;   // 搖桿半徑與中心死區（實際像素）
+const BTN_R = 30;                 // 按鈕半徑（實際像素，配合手指大小，不隨介面縮放）
 UI.joy = null;
+
+// 觸控裝置（或剛用過觸控）才顯示手機按鈕
+const touchUI = () => UI.touchMode || (window.matchMedia && matchMedia('(pointer: coarse)').matches);
+
+function touchButtons() {
+  if (G.state !== 'play' || G.spectate || G.paused || !touchUI()) return [];
+  const c = player();
+  const x1 = VW - 46, x2 = VW - 120, y1 = VH - 50, y2 = VH - 124;
+  return [
+    { label: '打暈', x: x1, y: y1, r: BTN_R + 4, on: stunReady(c) === true, run: () => playerKey('Space') },
+    { label: '放下', x: x1, y: y2, r: BTN_R, on: !!c.hand, run: () => playerKey('KeyQ') },
+    { label: '收包', x: x2, y: y1, r: BTN_R, on: bagFree(c) > 0 && !!c.hand && c.hand.kind !== 'dish', run: () => playerKey('KeyR') },
+    { label: '背包', x: x2, y: y2, r: BTN_R, on: true, active: UI.bagOpen, run: () => { UI.bagOpen = !UI.bagOpen; UI.drag = null; } },
+    { label: '暫停', x: VW - 30, y: 28, r: 22, on: true, small: true, run: () => { G.paused = true; UI.joy = null; } },
+  ];
+}
+const buttonAt = p => touchButtons().find(b => Math.hypot(p.x - b.x, p.y - b.y) <= b.r + 6);
+
+// 觸控打暈：自動瞄準附近看得到的敵人；沒有就朝面向方向
+function touchAim(c) {
+  let best = null, bd = CFG.STUN_RANGE + CFG.R + 60;
+  for (const e of G.chars) {
+    if (e.team === c.team || e.down > 0) continue;
+    const d = dist(c, e);
+    if (d < bd && canSee(c.team, e)) { bd = d; best = e; }
+  }
+  return best ? Math.atan2(best.y - c.y, best.x - c.x) : c.face;
+}
+
+// 暫停畫面的按鈕（介面座標）
+function tapPause(u) {
+  if (inRect(u, UI.resumeBtn)) { G.paused = false; return true; }
+  if (inRect(u, UI.quitBtn)) { G.paused = false; G.tutorial = null; newMatch(); G.state = 'title'; return true; }
+  return false;
+}
+
+// 點選單項目（選料理、選工具）
+function tapMenuItem(u) {
+  // 只有當下真的有選單時才算點選單（選單位置是上一幀畫的，避免用到過期的位置）
+  const cx = G.state === 'play' && getContext(player());
+  if (!cx || !cx.menu) return false;
+  const m = UI.menuRects && UI.menuRects.find(r => inRect(u, r));
+  if (!m) return false;
+  playerKey('Digit' + m.key);
+  return true;
+}
+
+// 背包拖曳：按在背包格上開始，放開時在框外就丟棄
+function startBagDrag(u, touchId) {
+  const c = player();
+  if (!UI.bagOpen || !UI.slotRects) return false;
+  const i = UI.slotRects.findIndex((r, k) => c.bag[k] && inRect(u, r));
+  if (i < 0) return false;
+  UI.drag = { item: c.bag[i], touchId };
+  return true;
+}
+function finishBagDrag() {
+  const c = player();
+  if (!UI.drag) return;
+  if (c.bag.includes(UI.drag.item) && !inRect(uiMouse(), UI.bagRect)) { dropBag(c, UI.drag.item); toast('已丟棄到腳邊'); if (G.tutorial) G.tutorial.dragged = true; }
+  UI.drag = null;
+}
+
 function onTouchStart(e) {
   e.preventDefault();
   UI.touchMode = true;
   for (const t of e.changedTouches) {
-    const left = t.clientX < VW / 2;
-    if (tapMenu({ x: t.clientX / UI_SCALE, y: t.clientY / UI_SCALE })) return;
-    if (left && !UI.joy) UI.joy = { id: t.identifier, ax: t.clientX, ay: t.clientY, x: t.clientX, y: t.clientY };
-    else if (!left && G.tutorial) tutorialKey('Enter');
+    const p = { x: t.clientX, y: t.clientY }, u = { x: p.x / UI_SCALE, y: p.y / UI_SCALE };
+    if (tapMenu(u)) return;
+    if (G.paused) { tapPause(u); return; }
+    const b = buttonAt(p);
+    if (b) { b.run(); continue; }
+    UI.mouse.x = p.x; UI.mouse.y = p.y;
+    if (startBagDrag(u, t.identifier)) continue;
+    if (tapMenuItem(u)) continue;
+    if (p.x < VW / 2) { if (!UI.joy) UI.joy = { id: t.identifier, ax: p.x, ay: p.y, x: p.x, y: p.y }; continue; }
+    if (G.tutorial && tutorialKey('Enter')) continue;
+    playerKey('KeyE');
   }
 }
 function onTouchMove(e) {
   e.preventDefault();
-  for (const t of e.changedTouches) if (UI.joy && t.identifier === UI.joy.id) { UI.joy.x = t.clientX; UI.joy.y = t.clientY; }
+  for (const t of e.changedTouches) {
+    if (UI.joy && t.identifier === UI.joy.id) { UI.joy.x = t.clientX; UI.joy.y = t.clientY; }
+    if (UI.drag && t.identifier === UI.drag.touchId) { UI.mouse.x = t.clientX; UI.mouse.y = t.clientY; }
+  }
 }
 function onTouchEnd(e) {
   e.preventDefault();
-  for (const t of e.changedTouches) if (UI.joy && t.identifier === UI.joy.id) UI.joy = null;
+  for (const t of e.changedTouches) {
+    if (UI.joy && t.identifier === UI.joy.id) UI.joy = null;
+    if (UI.drag && t.identifier === UI.drag.touchId) { UI.mouse.x = t.clientX; UI.mouse.y = t.clientY; finishBagDrag(); }
+  }
 }
 cv.addEventListener('touchstart', onTouchStart, { passive: false });
 cv.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -176,18 +254,13 @@ function tapMenu(p) {
 
 cv.addEventListener('mousedown', e => {
   UI.mouse.x = e.clientX; UI.mouse.y = e.clientY;
-  if (tapMenu(uiMouse())) return;
-  const c = player();
-  if (!UI.bagOpen || !UI.slotRects) return;
-  UI.slotRects.forEach((r, i) => { if (c.bag[i] && inRect(uiMouse(), r)) UI.drag = { item: c.bag[i] }; });
+  const u = uiMouse();
+  if (tapMenu(u)) return;
+  if (G.paused) { tapPause(u); return; }
+  if (startBagDrag(u)) return;
+  tapMenuItem(u);
 });
-cv.addEventListener('mouseup', () => {
-  const c = player();
-  if (UI.drag) {
-    if (c.bag.includes(UI.drag.item) && !inRect(uiMouse(), UI.bagRect)) { dropBag(c, UI.drag.item); toast('已丟棄到腳邊'); if (G.tutorial) G.tutorial.dragged = true; }
-    UI.drag = null;
-  }
-});
+cv.addEventListener('mouseup', () => finishBagDrag());
 cv.addEventListener('wheel', e => {
   e.preventDefault();
   UI.fit = false;

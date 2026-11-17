@@ -203,8 +203,8 @@ function tutorialHUD() {
   const T = G.tutorial, st = TUT_STEPS[T.i];
   // 說明面板：放在事件紀錄的位置（教學中不顯示事件紀錄）
   const w = Math.max(200, L.logW), x = UW - w - 6, y = L.logY;
-  const body = wrapText(st.text, w - 20, 13);
-  const foot = st.info ? (st.final ? '' : 'Enter 繼續') : (st.done && st.done() ? '完成！' : '');
+  const body = wrapText(keyText(st.text), w - 20, 13);
+  const foot = keyText(st.info ? (st.final ? '' : 'Enter 繼續') : (st.done && st.done() ? '完成！' : ''));
   const h = 34 + body.length * 19 + (foot ? 22 : 6);
   panel(x, y, w, h, 0.9);
   ctx.strokeStyle = 'rgba(255,214,90,.7)'; ctx.lineWidth = 1.5; rr(ctx, x, y, w, h, 6); ctx.stroke();

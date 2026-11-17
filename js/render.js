@@ -27,6 +27,21 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
+// 觸控裝置上把提示裡的電腦按鍵改成對應的觸控說法
+const KEY_TO_TOUCH = [
+  [/用 WASD 移動/g, '用左半邊搖桿移動'], [/WASD/g, '搖桿'],
+  [/用滑鼠對準紅隊的人，/g, '靠近紅隊的人（會自動瞄準），'], [/用滑鼠/g, '用手指'],
+  [/按數字 ?\d ?選/g, '點選單的'], [/按 5 做/g, '點選單做'],
+  [/按數字選料理開始備料/g, '點選料理開始備料'], [/按數字換工具/g, '點選工具'],
+  [/按 E/g, '點右半邊'], [/^E /, '點右半邊：'],
+  [/按 R/g, '按「收包」'], [/按 Tab/g, '按「背包」'], [/按空白鍵/g, '按「打暈」'],
+  [/（Q 放下）/g, '（按「放下」）'], [/（Q）/g, '（按「放下」）'],
+  [/Esc 可以隨時離開/g, '右上角「暫停」可以隨時離開'],
+  [/Enter 開始正式對局，T 再玩一次教學，Esc 回標題/g, '點右半邊開始正式對局；「暫停」可回標題'],
+  [/Enter 繼續/g, '點右半邊繼續'],
+];
+const keyText = s => (typeof touchUI === 'function' && touchUI() ? KEY_TO_TOUCH.reduce((t, [a, b]) => t.replace(a, b), String(s)) : s);
+
 const font = (px, bold) => (bold ? 'bold ' : '') + px + 'px ' + FONT;
 function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
 // 畫布上畫字不會自動觸發網頁字型下載；粉圓字型又依字元切成很多小檔。
@@ -331,7 +346,7 @@ function drawTopBar() {
   text(ctx, '我方', x + 8, 13, { size: 11, color: '#aaa', base: 'top' });
   text(ctx, '敵方', x + w - 8, 13, { size: 11, align: 'right', color: '#aaa', base: 'top' });
   const st = [G.paused ? '暫停' : '', G.speed !== 1 ? '×' + G.speed : '', G.spectate ? '觀戰' : '', G.reveal ? '全圖' : ''].filter(Boolean).join(' ');
-  text(ctx, (st ? st + '　' : '') + 'H 說明', UW - 8, L.stY, { size: 13, align: 'right', color: st ? '#ffd27a' : '#999' });
+  if (!touchUI()) text(ctx, (st ? st + '　' : '') + 'H 說明', UW - 8, L.stY, { size: 13, align: 'right', color: st ? '#ffd27a' : '#999' });
 }
 
 // 訂單：左側直排三張卡片
@@ -448,23 +463,32 @@ function drawPlayerPanel() {
   lines.forEach((l, i) => text(ctx, l, tx, y + 15 + i * 21, { size: 13, color: '#e6e6e6' }));
 
   const cx = getContext(c);
+  UI.menuRects = [];
   if (cx) {
-    const items = cx.menu ? [cx.label, ...cx.menu.map(m => m.key + ' ' + m.label + (m.ok ? '' : '（缺料）'))] : [cx.label];
+    const items = cx.menu ? [keyText(cx.label), ...cx.menu.map(m => m.key + ' ' + m.label + (m.ok ? '' : '（缺料）'))] : [keyText(cx.label)];
+    const rowH = touchUI() ? 26 : 20;
     ctx.font = font(14);
     const tw = Math.min(UW - 12, Math.max(...items.map(s => ctx.measureText(s).width)) + 20);
     const hx = clamp(UW / 2, tw / 2 + 6, UW - tw / 2 - 6);
-    const hy = y - 6 - items.length * 20 - 6;
-    panel(hx - tw / 2, hy, tw, items.length * 20 + 6, 0.85);
-    items.forEach((s, i) => text(ctx, s, hx, hy + 13 + i * 20, { size: 14, align: 'center', color: i === 0 ? '#ffe9a8' : (cx.menu[i - 1].ok ? '#fff' : '#888') }));
+    const hy = y - 6 - items.length * rowH - 6;
+    panel(hx - tw / 2, hy, tw, items.length * rowH + 6, 0.85);
+    items.forEach((s, i) => {
+      if (i > 0) {
+        const r = { x: hx - tw / 2 + 3, y: hy + 3 + i * rowH, w: tw - 6, h: rowH, key: cx.menu[i - 1].key };
+        UI.menuRects.push(r);
+        if (touchUI()) { rr(ctx, r.x, r.y + 1, r.w, r.h - 2, 4); ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.fill(); }
+      }
+      text(ctx, s, hx, hy + 3 + i * rowH + rowH / 2, { size: 14, align: 'center', color: i === 0 ? '#ffe9a8' : (cx.menu[i - 1].ok ? '#fff' : '#888') });
+    });
   }
 
   UI.bagRect = null;
   if (UI.bagOpen) {
     // 放在右下、玩家面板上方，不蓋住畫面中央的角色
-    const bw = 200, bh = 104, bx = L.miniRight ? 6 : UW - bw - 6, by = Math.max(62, y - bh - 8);
+    const bw = 200, bh = 104, bx = touchUI() ? UW / 2 - bw / 2 : (L.miniRight ? 6 : UW - bw - 6), by = touchUI() ? 62 : Math.max(62, y - bh - 8);
     UI.bagRect = { x: bx, y: by, w: bw, h: bh };
     panel(bx, by, bw, bh, 0.92);
-    text(ctx, '背包（Tab 關閉）', bx + 8, by + 12, { size: 13, bold: true });
+    text(ctx, touchUI() ? '背包（再按「背包」關閉）' : '背包（Tab 關閉）', bx + 8, by + 12, { size: 13, bold: true });
     if (!c.hasBag) {
       text(ctx, '未解鎖：在就地鍋做收納蔬餅', bx + bw / 2, by + 46, { size: 12, align: 'center', color: '#aaa' });
       text(ctx, '（蔬菜 1 份）並食用，解鎖兩格', bx + bw / 2, by + 64, { size: 12, align: 'center', color: '#aaa' });
@@ -476,7 +500,7 @@ function drawPlayerPanel() {
         const it = c.bag[i];
         slot(r.x, r.y, 48, it && !(UI.drag && UI.drag.item === it) ? it : null, '第 ' + (i + 1) + ' 格');
       }
-      text(ctx, '拖到框外丟棄；兩格滿時移速 75%', bx + bw / 2, by + bh - 8, { size: 11, align: 'center', color: '#999' });
+      text(ctx, (touchUI() ? '用手指' : '') + '拖到框外丟棄；兩格滿時移速 75%', bx + bw / 2, by + bh - 8, { size: 11, align: 'center', color: '#999' });
     }
   }
   if (UI.drag && c.bag.includes(UI.drag.item)) { const m = uiMouse(); drawItemIcon(ctx, UI.drag.item.kind, UI.drag.item.key, m.x, m.y, 14); }
@@ -488,9 +512,10 @@ function drawToasts(dt) {
   G.toasts.forEach((t, i) => {
     // 加半透明底板，疊在其他介面上也看得清楚
     ctx.font = font(17, true);
-    const tw = Math.min(UW - 12, ctx.measureText(t.text).width + 24), ty = 72 + i * 28;
+    const msg = keyText(t.text);
+    const tw = Math.min(UW - 12, ctx.measureText(msg).width + 24), ty = 72 + i * 28;
     panel(UW / 2 - tw / 2, ty - 13, tw, 26, 0.82);
-    text(ctx, t.text, UW / 2, ty, { size: 17, bold: true, align: 'center', color: t.color });
+    text(ctx, msg, UW / 2, ty, { size: 17, bold: true, align: 'center', color: t.color });
   });
 }
 
@@ -532,7 +557,7 @@ function block(lines) {
 }
 
 function drawOverlay() {
-  UI.tutBtn = null;
+  UI.tutBtn = null; UI.resumeBtn = null; UI.quitBtn = null;
   if (G.state === 'title' || G.state === 'end' || UI.help) { ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(0, 0, UW, UH); }
   if (G.state === 'title') {
     block([
@@ -555,9 +580,36 @@ function drawOverlay() {
       { t: '教學關卡', size: 16, button: true, gap: 40 },
       { t: '鍵盤：Enter 再玩　T 教學　V 觀戰', size: 12, color: '#999', gap: 18 },
     ]);
+  } else if (G.paused && G.state === 'play') {
+    ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, 0, UW, UH);
+    text(ctx, '暫停中', UW / 2, UH / 2 - 50, { size: 30, bold: true, align: 'center', color: '#ffd27a' });
+    const bw = 130, bh = 38;
+    UI.resumeBtn = { x: UW / 2 - bw - 8, y: UH / 2 - 10, w: bw, h: bh };
+    UI.quitBtn = { x: UW / 2 + 8, y: UH / 2 - 10, w: bw, h: bh };
+    for (const [r, label] of [[UI.resumeBtn, '繼續'], [UI.quitBtn, G.tutorial ? '離開教學' : '回標題']]) {
+      rr(ctx, r.x, r.y, r.w, r.h, r.h / 2); ctx.fillStyle = 'rgba(255,214,90,.16)'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#ffd65a'; ctx.stroke();
+      text(ctx, label, r.x + r.w / 2, r.y + r.h / 2 + 1, { size: 16, bold: true, align: 'center', color: '#ffd65a' });
+    }
+    if (!touchUI()) text(ctx, 'P 繼續', UW / 2, UH / 2 + 50, { size: 13, align: 'center', color: '#999' });
   } else if (UI.help) {
     block([{ t: '操作說明（H 關閉）', size: 24, bold: true, gap: 38 }, ...HELP.map(t => ({ t, size: 15, gap: 23 }))]);
   }
+}
+
+function drawTouchButtons() {
+  const bs = touchButtons();
+  if (!bs.length) return;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  for (const b of bs) {
+    ctx.globalAlpha = b.on ? 1 : 0.45;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.fillStyle = b.active ? 'rgba(255,214,90,.45)' : 'rgba(16,18,24,.7)'; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = b.on ? '#ffd65a' : 'rgba(255,255,255,.5)'; ctx.stroke();
+    ctx.font = font(b.small ? 13 : 15, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff'; ctx.fillText(b.label, b.x, b.y + 1);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
 }
 
 function drawJoystick() {
@@ -602,6 +654,7 @@ function render() {
   if (G.state !== 'title') { drawOrders(); drawTopBar(); drawLog(); drawMinimap(); drawPlayerPanel(); if (G.tutorial) tutorialHUD(); drawToasts(dt); }
   drawOverlay();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  drawTouchButtons();
   drawJoystick();
   drawRotateHint();
 }
